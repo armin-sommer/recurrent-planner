@@ -3,6 +3,7 @@ from dataclasses import field
 from pathlib import Path
 from typing import List, Optional
 
+from cleanba.attn_lstm import AttentionCellConfig, AttentionLSTMConfig
 from cleanba.convlstm import ConvConfig, ConvLSTMCellConfig, ConvLSTMConfig
 from cleanba.environments import AtariEnv, BoxWorldConfig, EnvConfig, EnvpoolBoxobanConfig, MiniPacManConfig, random_seed
 from cleanba.evaluate import EvalConfig
@@ -221,6 +222,37 @@ def sokoban_drc(n_recurrent: int, num_repeats: int) -> Args:
 # fmt: off
 def sokoban_drc_3_3(): return sokoban_drc(3, 3)
 def sokoban_drc_1_1(): return sokoban_drc(1, 1)
+# fmt: on
+
+
+def sokoban_drc_attn(n_recurrent: int, num_repeats: int, use_attention_mask: bool = True) -> Args:
+    """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
+
+    `use_attention_mask=True` (default) restricts each cell to its grid neighbourhood (provable
+    locality); `False` uses full dense attention. `Args.net` is mutable (see the `out.net = ...`
+    pattern below), so we reuse the DRC env/loss/optimizer setup and just swap the backbone.
+    """
+    args = sokoban_drc(n_recurrent, num_repeats)
+    args.net = AttentionLSTMConfig(
+        embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
+        recurrent=AttentionCellConfig(
+            features=32,
+            num_heads=4,
+            use_attention_mask=use_attention_mask,
+            mask_neighborhood="king",
+            n_global=4,
+        ),
+        n_recurrent=n_recurrent,
+        mlp_hiddens=(256,),
+        repeats_per_step=num_repeats,
+    )
+    return args
+
+
+# fmt: off
+def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)
+def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
+def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False)
 # fmt: on
 
 

@@ -440,6 +440,10 @@ def _fan_in_for_params(params: dict[str, dict[str, Any] | jax.Array]) -> dict[st
             elif k == "scale":
                 # Layernorm / RMSNorm scales are treated like inputs
                 out[k] = "input"
+            elif k == "rel_bias":
+                # Relative-position bias table (attention core, cleanba/attn_lstm.py): additive,
+                # not a matmul weight, so it gets the same lr scale (1.0) as inputs/biases.
+                out[k] = "input"
             else:
                 raise ValueError(f"Unknown parameter name {k=}")
         else:
