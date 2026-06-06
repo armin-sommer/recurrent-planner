@@ -11,6 +11,7 @@ from cleanba.cellwise_lstm import (
     CellwiseLSTMConfig,
 )
 from cleanba.convlstm import ConvConfig, LSTMCellState
+from cleanba.network import _fan_in_for_params
 
 
 def _cell_cfg(**kwargs) -> CellwiseLSTMCellConfig:
@@ -118,6 +119,30 @@ def test_message_output_zeros_init_is_gated_identity():
     (new_state2, _) = cell.apply(params, LSTMCellState(c=carry.c, h=h2), inputs, h2)
     # cell (1,1) is not a neighbour of (0,0) under the king mask only if distance > 1; pick a far cell.
     assert jnp.allclose(new_state.c[:, 3, 3, :], new_state2.c[:, 3, 3, :], atol=1e-6)
+
+
+def test_all_param_names_known_to_mup_labeler():
+    """Every param leaf must be recognized by `_fan_in_for_params`, else optimizer construction
+    (cleanba_impala.py: label_and_learning_rate_for_params) raises. Guards `edge_logits`/`global_logits`,
+    which are introduced by this core and would otherwise be unknown names."""
+    # A config that materializes every cellwise param: edge_logits (use_edge_weights), global_logits
+    # (n_global>0), RMSNorm scale (pre_norm), and the Dense kernels/biases.
+    net = CellwiseLSTMConfig(
+        embed=[ConvConfig(4, (3, 3), (1, 1), "SAME", True)],
+        recurrent=_cell_cfg(aggregation="mean", use_edge_weights=True, n_global=2, pre_norm=True),
+        repeats_per_step=2,
+        n_recurrent=2,
+    )
+    lstm = CellwiseLSTM(net)
+    k1, k2 = jax.random.split(jax.random.PRNGKey(0))
+    input_shape = (1, 8, 6, 3)
+    carry = lstm.apply({}, k1, input_shape, method=lstm.initialize_carry)
+    variables = lstm.init(k2, carry, jnp.ones((1, *input_shape)), jnp.ones((1, 1), dtype=jnp.bool_), method=lstm.scan)
+
+    labels = _fan_in_for_params(variables["params"])  # raises ValueError on any unknown leaf name
+    flat = jax.tree.leaves(labels)
+    assert flat, "expected some labeled params"
+    assert "edge_logits" not in flat and "global_logits" not in flat  # they are remapped, not raw names
 
 
 def test_config_de_serialize():
