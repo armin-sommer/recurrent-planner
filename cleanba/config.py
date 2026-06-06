@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List, Optional
 
 from cleanba.attn_lstm import AttentionCellConfig, AttentionLSTMConfig
+from cleanba.cellwise_lstm import CellwiseLSTMCellConfig, CellwiseLSTMConfig
 from cleanba.convlstm import ConvConfig, ConvLSTMCellConfig, ConvLSTMConfig
 from cleanba.environments import AtariEnv, BoxWorldConfig, EnvConfig, EnvpoolBoxobanConfig, MiniPacManConfig, random_seed
 from cleanba.evaluate import EvalConfig
@@ -253,6 +254,41 @@ def sokoban_drc_attn(n_recurrent: int, num_repeats: int, use_attention_mask: boo
 def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)
 def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
 def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False)
+# fmt: on
+
+
+def sokoban_drc_cellwise(n_recurrent: int, num_repeats: int, aggregation: str = "mean") -> Args:
+    """Same setup as `sokoban_drc`, but with the cellwise MLP-message-passing core instead of ConvLSTM.
+
+    Each cell computes a shared-MLP message from every (neighbour) cell's hidden state and aggregates
+    them over its grid neighbourhood (`aggregation` in {"mean", "sum", "max"}). This is the explicit
+    message-passing sibling of `sokoban_drc_attn`: an input-independent, translation-equivariant
+    graph operator in place of attention's input-dependent softmax. `Args.net` is mutable, so we
+    reuse the DRC env/loss/optimizer setup and just swap the backbone.
+    """
+    args = sokoban_drc(n_recurrent, num_repeats)
+    args.net = CellwiseLSTMConfig(
+        embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
+        recurrent=CellwiseLSTMCellConfig(
+            features=32,
+            message_hiddens=(64,),
+            use_neighbor_mask=True,
+            mask_neighborhood="king",
+            aggregation=aggregation,
+            n_global=4,
+        ),
+        n_recurrent=n_recurrent,
+        mlp_hiddens=(256,),
+        repeats_per_step=num_repeats,
+    )
+    return args
+
+
+# fmt: off
+def sokoban_drc_cellwise_3_3(): return sokoban_drc_cellwise(3, 3)
+def sokoban_drc_cellwise_1_1(): return sokoban_drc_cellwise(1, 1)
+def sokoban_drc_cellwise_3_3_sum(): return sokoban_drc_cellwise(3, 3, aggregation="sum")
+def sokoban_drc_cellwise_3_3_max(): return sokoban_drc_cellwise(3, 3, aggregation="max")
 # fmt: on
 
 
