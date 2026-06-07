@@ -104,6 +104,7 @@ class AttentionCellConfig:
     # --- aggregation readout: how each cell combines its neighbours' values ---
     readout: Literal["softmax", "maxplus"] = "maxplus"  # soft Bellman max-plus (VIN-like, default) vs convex average
     maxplus_beta_init: float = 1.0              # maxplus only: initial inverse temp (higher = closer to hard max)
+    maxplus_beta_max: float = 10.0             # maxplus only: cap on the (learnable) inverse temp, for numerical stability
 
     # --- priors / stability ---
     use_rel_bias: bool = True                   # offset-tied relative-position bias (soft-conv prior)
@@ -220,27 +221,41 @@ class AttentionCell(nn.RNNCellBase):
         if self.cfg.readout == "softmax":
             attn = nn.dot_product_attention(q, k, v, bias=bias)    # (B, S, nh, dh), softmax over kv axis
         elif self.cfg.readout == "maxplus":
-            # out_s(d) = mellowmax_{k in N(s)} [ L_{s,k} + v_{k,d} ], with the edge "reward"
-            # L = <q_s,k_k>/sqrt(dh) + bias (rel-pos prior + hard mask). As beta -> inf this is the hard
-            # max (a shortest-path / value-iteration backup); beta -> 0 is the neighbour mean. Swapping
-            # softmax's convex average for a (soft) max is what removes the over-smoothing that averaging
-            # suffers under the K x T iteration -- value propagates one hop per step without geometric
-            # attenuation, the property a VIN needs. Tractable because the local mask keeps Kn small;
-            # the (B,nh,S,Kn,dh) intermediate is ~tens of MB at grid scale.
+            # out_s(d) = mellowmax_{k in N(s)} [ L_{s,k} + v_{k,d} ]
+            #          = (1/beta) * ( logsumexp_k  beta*(L_{s,k} + v_{k,d})  -  log K ),
+            # with the edge "reward" L = <q_s,k_k>/sqrt(dh) + bias (rel-pos prior + hard mask). beta -> inf
+            # is the hard Bellman max (a shortest-path / value-iteration backup); beta -> 0 is the neighbour
+            # mean. Swapping softmax's convex average for this (soft) max removes the over-smoothing that
+            # averaging suffers under the K x T iteration -- value propagates one hop per step without
+            # geometric attenuation, the property a VIN needs.
+            #
+            # Implemented as a (B,nh,S,Kn) x (B,nh,Kn,dh) matmul, NOT a (B,nh,S,Kn,dh) tensor: factor the
+            # exponent exp(beta*(L+v)) = exp(beta*L)*exp(beta*v) and sum over k via einsum. This keeps the
+            # peak memory equal to plain softmax attention (the dropped (S,Kn,dh) intermediate is dh x
+            # larger and is retained across the whole T*repeats*layers unroll for backprop -> the OOM).
+            # Separable max-shifts (mL per query, mv over values) keep the exponentials in (0, 1].
             L = jnp.einsum("bshd,bkhd->bhsk", q, k) * (dh ** -0.5) + bias        # (B, nh, S, Kn)
-            beta0 = math.log(math.expm1(self.cfg.maxplus_beta_init))             # inverse-softplus init
-            beta = nn.softplus(self.param("beta", nn.initializers.constant(beta0), (nh,)))
-            beta = beta[None, :, None, None]                                     # (1, nh, 1, 1), positive
+            # beta = beta_max * sigmoid(raw), so it stays in (0, beta_max): a learnable inverse temperature
+            # bounded for numerical stability (mellowmax at beta~10 is already near hard-max). Init at
+            # maxplus_beta_init via the logit of (init / max).
+            bm = self.cfg.maxplus_beta_max
+            raw0 = math.log(self.cfg.maxplus_beta_init / (bm - self.cfg.maxplus_beta_init))
+            beta = bm * nn.sigmoid(self.param("beta", nn.initializers.constant(raw0), (nh,)))[None, :, None, None]
             vh = jnp.transpose(v, (0, 2, 1, 3))                                  # (B, nh, Kn, dh)
-            M = L[..., None] + vh[:, :, None, :, :]                              # (B, nh, S, Kn, dh)
-            lse = jax.nn.logsumexp(beta[..., None] * M, axis=3)                  # (B, nh, S, dh); masked->-inf
+            mL = jax.lax.stop_gradient(L.max(axis=3, keepdims=True))             # (B, nh, S, 1) per-query shift
+            mv = jax.lax.stop_gradient(vh.max(axis=2, keepdims=True))            # (B, nh, 1, dh) per-channel value shift
+            a = jnp.exp(beta * (L - mL))                                         # (B, nh, S, Kn) in (0,1]; masked->0
+            w = jnp.exp(beta * (vh - mv))                                        # (B, nh, Kn, dh) in (0,1]
+            agg = jnp.einsum("bhsk,bhkd->bhsd", a, w)                            # (B, nh, S, dh) = sum_k a*w
+            agg = jnp.maximum(agg, jnp.finfo(agg.dtype).tiny)                    # guard: floor underflow (huge beta*gap)
             if self.cfg.use_attention_mask:  # self + grid neighbours (varies at the boundary) + all globals
                 spatial = _adjacency(H, W, king=(self.cfg.mask_neighborhood == "king")).sum(axis=1)  # (S,)
                 neighbours = spatial + self.cfg.n_global
             else:
                 neighbours = jnp.full((S,), Kn)
-            logK = jnp.log(neighbours.astype(lse.dtype))[None, None, :, None]    # (1, 1, S, 1) mellowmax norm
-            attn = ((lse - logK) / beta).transpose(0, 2, 1, 3)                   # (B, S, nh, dh)
+            logK = jnp.log(neighbours.astype(agg.dtype))[None, None, :, None]    # (1, 1, S, 1) mellowmax norm
+            # mL + mv undo the shifts exactly: out = (1/beta)(logsumexp_k beta(L+v) - log K).
+            attn = (mL + mv + (jnp.log(agg) - logK) / beta).transpose(0, 2, 1, 3)  # (B, S, nh, dh)
         else:
             raise ValueError(f"{self.cfg.readout=}")
         a = nn.DenseGeneral(
