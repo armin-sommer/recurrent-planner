@@ -444,6 +444,10 @@ def _fan_in_for_params(params: dict[str, dict[str, Any] | jax.Array]) -> dict[st
                 # Relative-position bias table (attention core, cleanba/attn_lstm.py): additive,
                 # not a matmul weight, so it gets the same lr scale (1.0) as inputs/biases.
                 out[k] = "input"
+            elif k == "beta":
+                # Max-plus inverse temperature (attention core, readout="maxplus"): a per-head
+                # softplus-positive scalar, not a matmul weight, so same lr scale (1.0) as rel_bias.
+                out[k] = "input"
             elif k in ("edge_logits", "global_logits"):
                 # Offset-tied / global edge-weight log-tables (cellwise core, cleanba/cellwise_lstm.py):
                 # they reweight a fixed adjacency, not a matmul weight, so same lr scale (1.0) as rel_bias.

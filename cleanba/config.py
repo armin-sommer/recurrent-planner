@@ -1,7 +1,7 @@
 import dataclasses
 from dataclasses import field
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 
 from cleanba.attn_lstm import AttentionCellConfig, AttentionLSTMConfig
 from cleanba.cellwise_lstm import CellwiseLSTMCellConfig, CellwiseLSTMConfig
@@ -209,7 +209,7 @@ def sokoban_drc(n_recurrent: int, num_repeats: int) -> Args:
         num_minibatches=8,
         rmsprop_eps=1.5625e-07,
         local_num_envs=256,
-        total_timesteps=80117760,
+        total_timesteps=300001280,  # ~300M, batch-aligned: 58594 updates * (local_num_envs 256 * num_steps 20)
         base_run_dir=Path("/training/cleanba"),
         learning_rate=0.0004,
         optimizer="adam",
@@ -226,12 +226,21 @@ def sokoban_drc_1_1(): return sokoban_drc(1, 1)
 # fmt: on
 
 
-def sokoban_drc_attn(n_recurrent: int, num_repeats: int, use_attention_mask: bool = True) -> Args:
+def sokoban_drc_attn(
+    n_recurrent: int,
+    num_repeats: int,
+    use_attention_mask: bool = True,
+    readout: Literal["softmax", "maxplus"] = "maxplus",
+    mask_neighborhood: Literal["king", "vonneumann"] = "king",
+) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
     `use_attention_mask=True` (default) restricts each cell to its grid neighbourhood (provable
-    locality); `False` uses full dense attention. `Args.net` is mutable (see the `out.net = ...`
-    pattern below), so we reuse the DRC env/loss/optimizer setup and just swap the backbone.
+    locality); `False` uses full dense attention. `readout` defaults to "maxplus" (the VIN-aligned
+    soft Bellman max-plus aggregator); pass `readout="softmax"` for the original convex-average
+    attention. `mask_neighborhood` chooses the grid stencil ("king" = 8-neighbourhood, "vonneumann" =
+    the 4 one-move-reachable cells). `Args.net` is mutable, so we reuse the DRC env/loss/optimizer
+    setup and just swap the backbone.
     """
     args = sokoban_drc(n_recurrent, num_repeats)
     args.net = AttentionLSTMConfig(
@@ -240,8 +249,9 @@ def sokoban_drc_attn(n_recurrent: int, num_repeats: int, use_attention_mask: boo
             features=32,
             num_heads=4,
             use_attention_mask=use_attention_mask,
-            mask_neighborhood="king",
+            mask_neighborhood=mask_neighborhood,
             n_global=4,
+            readout=readout,
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),
@@ -251,9 +261,11 @@ def sokoban_drc_attn(n_recurrent: int, num_repeats: int, use_attention_mask: boo
 
 
 # fmt: off
-def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)
+def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)                                         # maxplus, king (default)
 def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
-def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False)
+def sokoban_drc_attn_3_3_vn(): return sokoban_drc_attn(3, 3, mask_neighborhood="vonneumann")      # maxplus, von Neumann
+def sokoban_drc_attn_3_3_softmax(): return sokoban_drc_attn(3, 3, readout="softmax")              # old convex-average attention
+def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False)        # maxplus, dense (heavy: large Kn)
 # fmt: on
 
 

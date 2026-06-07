@@ -10,7 +10,9 @@ Mapping to the relational-update formalism
 - graph N:           the attention support. Controlled by ``use_attention_mask`` (see below).
 - edge weight phi:   the attention logit <q_s, k_s'> / sqrt(d) + offset-tied relative bias.
 - message F_phi:     the value projection W_v.
-- aggregation (+):   the masked softmax-weighted sum, then the *same* LSTM gate as ConvLSTM.
+- aggregation (+):   masked softmax-weighted sum (readout="softmax"), or a soft Bellman max-plus
+                     mellowmax (readout="maxplus", the VIN-aligned operator); then the *same* LSTM
+                     gate as ConvLSTM.
 - K thinking steps:  inherited inner ``nn.scan`` over ``repeats_per_step`` (BaseLSTM._apply_cells).
 - t env time:        inherited outer ``nn.scan`` (BaseLSTM.scan) / single ``BaseLSTM.step``.
 
@@ -32,6 +34,7 @@ self-edge always kept; zero-init of the relative-bias table and the attention ou
 the cell starts as a gated identity / soft box-conv.
 """
 import dataclasses
+import math
 from typing import List, Literal
 
 import flax.linen as nn
@@ -97,6 +100,10 @@ class AttentionCellConfig:
 
     # --- global / register tokens (the attention analogue of pool_and_inject) ---
     n_global: int = 4                           # 0 disables them entirely
+
+    # --- aggregation readout: how each cell combines its neighbours' values ---
+    readout: Literal["softmax", "maxplus"] = "maxplus"  # soft Bellman max-plus (VIN-like, default) vs convex average
+    maxplus_beta_init: float = 1.0              # maxplus only: initial inverse temp (higher = closer to hard max)
 
     # --- priors / stability ---
     use_rel_bias: bool = True                   # offset-tied relative-position bias (soft-conv prior)
@@ -209,7 +216,33 @@ class AttentionCell(nn.RNNCellBase):
                 adj = jnp.concatenate([adj, jnp.ones((S, self.cfg.n_global), dtype=bool)], axis=1)
             bias = jnp.where(adj[None, None], bias, -1e9)
 
-        attn = nn.dot_product_attention(q, k, v, bias=bias)    # (B, S, nh, dh), softmax over kv axis
+        # --- aggregate neighbour values: softmax convex average, or soft Bellman max-plus ---
+        if self.cfg.readout == "softmax":
+            attn = nn.dot_product_attention(q, k, v, bias=bias)    # (B, S, nh, dh), softmax over kv axis
+        elif self.cfg.readout == "maxplus":
+            # out_s(d) = mellowmax_{k in N(s)} [ L_{s,k} + v_{k,d} ], with the edge "reward"
+            # L = <q_s,k_k>/sqrt(dh) + bias (rel-pos prior + hard mask). As beta -> inf this is the hard
+            # max (a shortest-path / value-iteration backup); beta -> 0 is the neighbour mean. Swapping
+            # softmax's convex average for a (soft) max is what removes the over-smoothing that averaging
+            # suffers under the K x T iteration -- value propagates one hop per step without geometric
+            # attenuation, the property a VIN needs. Tractable because the local mask keeps Kn small;
+            # the (B,nh,S,Kn,dh) intermediate is ~tens of MB at grid scale.
+            L = jnp.einsum("bshd,bkhd->bhsk", q, k) * (dh ** -0.5) + bias        # (B, nh, S, Kn)
+            beta0 = math.log(math.expm1(self.cfg.maxplus_beta_init))             # inverse-softplus init
+            beta = nn.softplus(self.param("beta", nn.initializers.constant(beta0), (nh,)))
+            beta = beta[None, :, None, None]                                     # (1, nh, 1, 1), positive
+            vh = jnp.transpose(v, (0, 2, 1, 3))                                  # (B, nh, Kn, dh)
+            M = L[..., None] + vh[:, :, None, :, :]                              # (B, nh, S, Kn, dh)
+            lse = jax.nn.logsumexp(beta[..., None] * M, axis=3)                  # (B, nh, S, dh); masked->-inf
+            if self.cfg.use_attention_mask:  # self + grid neighbours (varies at the boundary) + all globals
+                spatial = _adjacency(H, W, king=(self.cfg.mask_neighborhood == "king")).sum(axis=1)  # (S,)
+                neighbours = spatial + self.cfg.n_global
+            else:
+                neighbours = jnp.full((S,), Kn)
+            logK = jnp.log(neighbours.astype(lse.dtype))[None, None, :, None]    # (1, 1, S, 1) mellowmax norm
+            attn = ((lse - logK) / beta).transpose(0, 2, 1, 3)                   # (B, S, nh, dh)
+        else:
+            raise ValueError(f"{self.cfg.readout=}")
         a = nn.DenseGeneral(
             C, axis=(-2, -1), use_bias=False, name="out", kernel_init=nn.initializers.zeros
         )(attn)  # W_o zeros-init -> attention message starts at 0 (gated identity at init)
