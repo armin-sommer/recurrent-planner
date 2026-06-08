@@ -45,8 +45,15 @@ authors = [
     {name="Costa Huang", email="costa.huang@outlook.com"},
 ]
 readme = "README.md"
+# Python 3.10 only: the prebuilt envpool 0.8.4 wheel is cp310 and there is no wheel for other versions.
+requires-python = ">=3.10,<3.11"
 
 dependencies = [
+    # numpy MUST stay <2: the envpool 0.8.4 (AlignmentResearch fork) binary is built against the
+    # numpy 1.x C ABI. Under numpy 2.x the Sokoban env silently returns ALL-ZERO observations
+    # (correct dtype/shape, no data) -> the agent trains on a blank screen and never learns.
+    # See requirements.txt (numpy==1.26.4) and tests/check_env_obs.py.
+    "numpy ==1.26.4",
     "rich ~= 13.7",
     "tensorboard ~=2.12.0",
     "flax ~=0.8.0",
