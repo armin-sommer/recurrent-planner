@@ -108,7 +108,14 @@ class EnvpoolBoxobanConfig(EnvpoolEnvConfig):
     min_episode_steps: int = 0  # The minimum length of an episode.
     load_sequentially: bool = False
     n_levels_to_load: int = -1  # -1 means "all levels". Used only when `load_sequentially` is True.
-    nn_without_noop: bool = True  # Use a neural network without the noop action
+    # MUST be False for this envpool Sokoban build. The envpool Sokoban-v0 gym action space is
+    # Discrete(4) = {0:PushUp, 1:PushDown, 2:PushLeft, 3:PushRight} -- the no-op (C++ action 4) is
+    # NOT in the gym space. nn_without_noop=True strips the LAST action, which here is PushRight (a
+    # REAL move), crippling the agent (it can never push right -> can place a box or two but never
+    # solves). Verified via envpool/sokoban/sokoban_envpool.h (kActPushRight=3) and an empirical
+    # step-probe (all 4 actions move the board). The DRC "no-op-free policy" intent is already
+    # satisfied because the no-op isn't in the action space, so the correct value is False.
+    nn_without_noop: bool = False
 
     # Not present in _SokobanEnvSpec
     cache_path: Path = Path("/opt/sokoban_cache")
