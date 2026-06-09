@@ -242,7 +242,9 @@ def sokoban_drc_attn(
     the 4 one-move-reachable cells). `Args.net` is mutable, so we reuse the DRC env/loss/optimizer
     setup and just swap the backbone.
     """
-    args = sokoban_drc(n_recurrent, num_repeats)
+    args = sokoban_drc33_59()  # inherit the PROVEN recipe (grad clip 2.5e-4, vtrace_lambda 0.5,
+    # light L2, valid_medium eval), then swap in the attention/cellwise backbone below.
+    # (Previously based on the weaker `sokoban_drc` recipe, which confounded the DRC comparison.)
     args.net = AttentionLSTMConfig(
         embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
         recurrent=AttentionCellConfig(
@@ -278,7 +280,9 @@ def sokoban_drc_cellwise(n_recurrent: int, num_repeats: int, aggregation: str = 
     graph operator in place of attention's input-dependent softmax. `Args.net` is mutable, so we
     reuse the DRC env/loss/optimizer setup and just swap the backbone.
     """
-    args = sokoban_drc(n_recurrent, num_repeats)
+    args = sokoban_drc33_59()  # inherit the PROVEN recipe (grad clip 2.5e-4, vtrace_lambda 0.5,
+    # light L2, valid_medium eval), then swap in the attention/cellwise backbone below.
+    # (Previously based on the weaker `sokoban_drc` recipe, which confounded the DRC comparison.)
     args.net = CellwiseLSTMConfig(
         embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
         recurrent=CellwiseLSTMCellConfig(

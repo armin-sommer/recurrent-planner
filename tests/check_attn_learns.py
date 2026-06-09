@@ -119,9 +119,12 @@ def main():
     for path, leaf in flat:
         name = "/".join(str(getattr(x, "key", x)) for x in path)
         gn = float(jnp.linalg.norm(leaf.astype(jnp.float32)))
+        is_critic = "critic_params" in name  # expected-dead: this test's loss is policy-only
         tag = "  <-- DEAD" if gn < 1e-9 else ("  <-- NaN/Inf" if not np.isfinite(gn) else "")
-        if tag:
+        if tag and not is_critic:
             dead.append(name)
+        if tag and is_critic:
+            tag += " (expected: policy-only loss never touches the value head)"
         if tag or gn < 1e-5:
             print(f"    {gn:.3e}  {name}{tag}")
     if not dead:

@@ -258,9 +258,17 @@ class AttentionCell(nn.RNNCellBase):
             attn = (mL + mv + (jnp.log(agg) - logK) / beta).transpose(0, 2, 1, 3)  # (B, S, nh, dh)
         else:
             raise ValueError(f"{self.cfg.readout=}")
+        # W_o SMALL (not zero) init. Zero-init fully gradient-isolates the entire attention
+        # sub-block (q/k/v/rel_bias/beta) and carry.h from the output at step 0 -- so the core can
+        # only learn through the conv-embed + gate + skip_final bypass, attention never engages, and
+        # the policy stays near-uniform (verified: tests/check_attn_learns.py showed all attn params
+        # dead-grad at init). A small nonzero scale keeps init near-identity (stable) while letting
+        # gradient reach the attention params from step 0. Tune: lower to 0.01 if unstable, raise
+        # toward 1.0 if attention engages too slowly.
         a = nn.DenseGeneral(
-            C, axis=(-2, -1), use_bias=False, name="out", kernel_init=nn.initializers.zeros
-        )(attn)  # W_o zeros-init -> attention message starts at 0 (gated identity at init)
+            C, axis=(-2, -1), use_bias=False, name="out",
+            kernel_init=nn.initializers.variance_scaling(0.1, "fan_in", "truncated_normal"),
+        )(attn)
 
         # --- fused gates (local ih term + attention message) and the IDENTICAL LSTM update ---
         gates = nn.Dense(4 * C, name="gate")(jnp.concatenate([in_tok, a], axis=-1))  # (B, S, 4C)
