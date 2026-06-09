@@ -40,12 +40,16 @@ def build_policy(variant: str):
     from cleanba.config import (
         sokoban_drc_attn_3_3,
         sokoban_drc_attn_3_3_softmax,
+        sokoban_drc_attn_3_3_dir,
+        sokoban_drc_attn_3_3_dir_softmax,
         sokoban_drc_3_3,
     )
 
     spec = {
         "maxplus": sokoban_drc_attn_3_3,
         "softmax": sokoban_drc_attn_3_3_softmax,
+        "dir": sokoban_drc_attn_3_3_dir,                  # + per-offset value routing (maxplus)
+        "dir_softmax": sokoban_drc_attn_3_3_dir_softmax,  # + per-offset value routing (softmax)
         "drc": sokoban_drc_3_3,
     }[variant]().net
 
