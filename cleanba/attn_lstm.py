@@ -217,36 +217,37 @@ class AttentionCell(nn.RNNCellBase):
                 offsets = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
             Onb = len(offsets)
 
-            def shift(x, dr, dc):  # y[b,r,c] = x[b,r+dr,c+dc], 0 outside the grid (no wraparound)
-                xp = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
-                return xp[:, 1 + dr : 1 + dr + H, 1 + dc : 1 + dc + W, :]
+            def shift(x, dr, dc):  # y[b,r,c,...] = x[b,r+dr,c+dc,...], 0 outside the grid (no wraparound)
+                pads = [(0, 0), (1, 1), (1, 1)] + [(0, 0)] * (x.ndim - 3)  # ndim-agnostic (4D or 5D)
+                xp = jnp.pad(x, pads)
+                return xp[:, 1 + dr : 1 + dr + H, 1 + dc : 1 + dc + W]
 
-            q_layer = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="q")
-            k_layer = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="k")  # shared k
-            q = q_layer(h)  # (B,H,W,nh,dh)
-            rel = self.param("rel_bias_dir", nn.initializers.zeros, (nh, Onb))  # per-offset logit bias
-            # per-offset relative KEY embedding (content x direction in the score); small-init
+            # FUSED directional value routing. Same math as the per-offset loop, but ~Onb fewer GEMMs:
+            #   * k is linear & bias-free, so k(shift(h)) == shift(k(h)) -> project k ONCE, then shift.
+            #   * the Onb per-offset value projections W_v^offset become ONE (Onb,C,nh,dh) tensor + one
+            #     einsum, instead of Onb separate Dense layers.
+            # Produces L (B,H,W,nh,Onb), V (B,H,W,nh,dh,Onb), Kvalid (B,H,W) -- identical to before, so
+            # the softmax/maxplus readout below is unchanged.
+            q = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="q")(h)       # (B,H,W,nh,dh)
+            k_full = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="k")(h)  # (B,H,W,nh,dh)
+            rel = self.param("rel_bias_dir", nn.initializers.zeros, (nh, Onb))        # per-offset logit bias
+            Wv = self.param("v_dir", nn.initializers.normal((1.0 / C) ** 0.5), (Onb, C, nh, dh))  # fused W_v^offset
             rel_k = (self.param("rel_key", nn.initializers.normal(0.02), (Onb, nh, dh))
                      if self.cfg.relative_key else None)
             ones = jnp.ones((B, H, W, 1), dtype=h.dtype)
 
-            L_list, V_list, valid_list = [], [], []
-            for oi, (dr, dc) in enumerate(offsets):
-                h_s = shift(h, dr, dc)                                   # neighbour hidden (B,H,W,C)
-                valid = shift(ones, dr, dc)[..., 0]                      # (B,H,W) 1 if neighbour in-grid
-                k_o = k_layer(h_s)                                       # (B,H,W,nh,dh)
-                if rel_k is not None:
-                    k_o = k_o + rel_k[oi][None, None, None]              # + r^K_offset: content x direction
-                v_o = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name=f"v_{oi}")(h_s)  # PER-OFFSET value
-                logit = (q * k_o).sum(-1) * (dh ** -0.5) + rel[:, oi][None, None, None, :]  # (B,H,W,nh)
-                logit = jnp.where(valid[..., None] > 0, logit, -1e9)
-                L_list.append(logit)
-                V_list.append(v_o)
-                valid_list.append(valid)
+            # Stack the Onb shifts once (cheap pad/slice), then batch all offsets through two einsums.
+            h_sh = jnp.stack([shift(h, dr, dc) for (dr, dc) in offsets], axis=3)            # (B,H,W,Onb,C)
+            k_sh = jnp.stack([shift(k_full, dr, dc) for (dr, dc) in offsets], axis=3)       # (B,H,W,Onb,nh,dh)
+            valid = jnp.stack([shift(ones, dr, dc)[..., 0] for (dr, dc) in offsets], axis=3)  # (B,H,W,Onb)
+            if rel_k is not None:
+                k_sh = k_sh + rel_k[None, None, None]                                      # + r^K_offset
 
-            L = jnp.stack(L_list, axis=-1)                  # (B,H,W,nh,Onb)
-            V = jnp.stack(V_list, axis=-1)                  # (B,H,W,nh,dh,Onb)
-            Kvalid = jnp.stack(valid_list, axis=-1).sum(-1)  # (B,H,W)
+            V = jnp.einsum("bhwoc,ocnd->bhwndo", h_sh, Wv)                                  # (B,H,W,nh,dh,Onb)
+            L = jnp.einsum("bhwnd,bhwond->bhwno", q, k_sh) * (dh ** -0.5)                   # (B,H,W,nh,Onb)
+            L = L + rel[None, None, None]                                                   # per-offset logit bias
+            L = jnp.where(valid[:, :, :, None, :] > 0, L, -1e9)                             # mask out-of-grid
+            Kvalid = valid.sum(-1)                                                          # (B,H,W)
 
             if self.cfg.readout == "softmax":
                 w = jax.nn.softmax(L, axis=-1)                      # (B,H,W,nh,Onb)
