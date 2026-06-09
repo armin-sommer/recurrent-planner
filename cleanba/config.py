@@ -235,6 +235,7 @@ def sokoban_drc_attn(
     mask_neighborhood: Literal["king", "vonneumann"] = "king",
     directional_value: bool = True,   # ON by default: per-offset value routing (VIN/conv-aligned)
     relative_key: bool = True,        # ON by default: content x direction in the score
+    attend_inputs: bool = True,       # ON by default: live obs in the attention source (DRC conv_ih analog)
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
@@ -261,6 +262,7 @@ def sokoban_drc_attn(
             readout=readout,
             directional_value=directional_value,  # per-offset value projection (VIN/conv-aligned routing)
             relative_key=relative_key,             # per-offset relative key (content x direction in the score)
+            attend_inputs=attend_inputs,           # live obs folded into q/k/v source (DRC conv_ih analog)
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),

@@ -123,6 +123,13 @@ class AttentionCellConfig:
     # policy-iteration / forward-search readout needs. Small-init so it starts as a gentle prior.
     relative_key: bool = False
 
+    # When True (default), fold the current observation + top-down hidden into the attention SOURCE:
+    # q/k/v come from h + W_in.[inputs, prev_layer_hidden], matching DRC's conv_ih. So the LIVE board
+    # flows over the (same, static) grid graph every tick -- the transition model lookahead/policy-
+    # iteration needs -- instead of only reaching other cells after seeping into the hidden. Does NOT
+    # change the graph topology (the king mask); only enriches what rides over the edges.
+    attend_inputs: bool = True
+
     # --- priors / stability ---
     use_rel_bias: bool = True                   # offset-tied relative-position bias (soft-conv prior)
     pre_norm: bool = True                        # RMSNorm the tokens before q/k/v projection
@@ -208,6 +215,9 @@ class AttentionCell(nn.RNNCellBase):
             assert self.cfg.n_global == 0, "directional_value requires n_global=0 (pure local)"
             assert self.cfg.use_attention_mask, "directional_value is a local message pass; needs the mask"
             h = carry.h
+            if self.cfg.attend_inputs:  # DRC conv_ih analog: fold the live obs + top-down hidden into
+                # the attention source so q/k/v see the current board over the same static king graph.
+                h = h + nn.Dense(C, name="in_proj")(jnp.concatenate([inputs, prev_layer_hidden], axis=-1))
             if self.cfg.pre_norm:
                 h = nn.RMSNorm(name="pre_norm")(h)  # (B,H,W,C)
 
@@ -283,11 +293,13 @@ class AttentionCell(nn.RNNCellBase):
         def tok(z):  # (B, H, W, X) -> (B, S, X)
             return z.reshape(B, S, z.shape[-1])
 
+        # Local "ih" term: the new observation + the top-down hidden.
+        in_tok = tok(jnp.concatenate([inputs, prev_layer_hidden], axis=-1))
         h_tok = tok(carry.h)
+        if self.cfg.attend_inputs:  # DRC conv_ih analog: fold the live obs into the attention source
+            h_tok = h_tok + nn.Dense(C, name="in_proj")(in_tok)
         if self.cfg.pre_norm:
             h_tok = nn.RMSNorm(name="pre_norm")(h_tok)  # per-token norm over the channel axis
-        # Local "ih" term: the new observation + the top-down hidden, injected per-token (no mixing).
-        in_tok = tok(jnp.concatenate([inputs, prev_layer_hidden], axis=-1))
 
         # --- global / register tokens == pool_and_inject (recomputed each step, NOT in the carry) ---
         if self.cfg.n_global > 0:
