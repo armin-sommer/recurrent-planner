@@ -116,6 +116,13 @@ class AttentionCellConfig:
     # rel_bias) and the maxplus/softmax aggregation are unchanged; only the value path becomes anisotropic.
     directional_value: bool = False
 
+    # When True (directional_value path only), add a learned per-offset KEY embedding r^K_offset to the
+    # shifted key before the q.k score: score = q.(k + r^K_offset). This makes direction interact with
+    # CONTENT in the attention weight (not just an additive scalar via rel_bias_dir) -- i.e. "attend
+    # along this directed edge IFF the content warrants it", the content-gated forward operator a
+    # policy-iteration / forward-search readout needs. Small-init so it starts as a gentle prior.
+    relative_key: bool = False
+
     # --- priors / stability ---
     use_rel_bias: bool = True                   # offset-tied relative-position bias (soft-conv prior)
     pre_norm: bool = True                        # RMSNorm the tokens before q/k/v projection
@@ -218,6 +225,9 @@ class AttentionCell(nn.RNNCellBase):
             k_layer = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="k")  # shared k
             q = q_layer(h)  # (B,H,W,nh,dh)
             rel = self.param("rel_bias_dir", nn.initializers.zeros, (nh, Onb))  # per-offset logit bias
+            # per-offset relative KEY embedding (content x direction in the score); small-init
+            rel_k = (self.param("rel_key", nn.initializers.normal(0.02), (Onb, nh, dh))
+                     if self.cfg.relative_key else None)
             ones = jnp.ones((B, H, W, 1), dtype=h.dtype)
 
             L_list, V_list, valid_list = [], [], []
@@ -225,6 +235,8 @@ class AttentionCell(nn.RNNCellBase):
                 h_s = shift(h, dr, dc)                                   # neighbour hidden (B,H,W,C)
                 valid = shift(ones, dr, dc)[..., 0]                      # (B,H,W) 1 if neighbour in-grid
                 k_o = k_layer(h_s)                                       # (B,H,W,nh,dh)
+                if rel_k is not None:
+                    k_o = k_o + rel_k[oi][None, None, None]              # + r^K_offset: content x direction
                 v_o = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name=f"v_{oi}")(h_s)  # PER-OFFSET value
                 logit = (q * k_o).sum(-1) * (dh ** -0.5) + rel[:, oi][None, None, None, :]  # (B,H,W,nh)
                 logit = jnp.where(valid[..., None] > 0, logit, -1e9)

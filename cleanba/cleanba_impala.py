@@ -555,7 +555,15 @@ def make_optimizer(
     )
 
     def _linear_or_constant_schedule(count: chex.Numeric) -> chex.Numeric:
-        return _linear_schedule(count) if args.anneal_lr else args.learning_rate
+        base = _linear_schedule(count) if args.anneal_lr else args.learning_rate
+        if args.warmup_updates > 0:
+            # Linear LR warmup over the first `warmup_updates` outer updates (count is in optimizer
+            # steps; one outer update = num_minibatches steps). Ramps 0 -> base, then the normal
+            # anneal takes over. Default off (warmup_updates=0) so ConvLSTM/existing runs are
+            # unchanged; the main use is stabilizing attention's early training.
+            update = count / args.num_minibatches
+            base = base * jnp.clip(update / args.warmup_updates, 0.0, 1.0)
+        return base
 
     def optimizer_with_learning_rate(
         learning_rate: chex.Numeric | Callable[[chex.Numeric], chex.Numeric],

@@ -55,6 +55,7 @@ class Args:
     total_timesteps: int = 100_000_000  # total timesteps of the experiments
     learning_rate: float = 0.0006  # the learning rate of the optimizer
     final_learning_rate: float = 0.0  # The learning rate at the end of training
+    warmup_updates: int = 0  # linear LR warmup over this many outer updates (0 = off). Stabilizes attention.
     local_num_envs: int = 64  # the number of parallel game environments for every actor device
     num_steps: int = 20  # the number of steps to run in each environment per policy rollout
     train_epochs: int = 1  # Repetitions of going through the collected training
@@ -233,6 +234,7 @@ def sokoban_drc_attn(
     readout: Literal["softmax", "maxplus"] = "maxplus",
     mask_neighborhood: Literal["king", "vonneumann"] = "king",
     directional_value: bool = False,
+    relative_key: bool = False,
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
@@ -256,6 +258,7 @@ def sokoban_drc_attn(
             n_global=0,  # pure local: each cell attends ONLY to its king-neighbours + self (no global/register tokens)
             readout=readout,
             directional_value=directional_value,  # per-offset value projection (VIN/conv-aligned routing)
+            relative_key=relative_key,             # per-offset relative key (content x direction in the score)
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),
@@ -267,6 +270,7 @@ def sokoban_drc_attn(
 # fmt: off
 def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)                                         # maxplus, king (default)
 def sokoban_drc_attn_3_3_dir(): return sokoban_drc_attn(3, 3, directional_value=True)             # + per-offset value routing (VIN-aligned)
+def sokoban_drc_attn_3_3_dir_relk(): return sokoban_drc_attn(3, 3, directional_value=True, relative_key=True)  # + content x direction key
 def sokoban_drc_attn_3_3_dir_softmax(): return sokoban_drc_attn(3, 3, readout="softmax", directional_value=True)
 def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
 def sokoban_drc_attn_3_3_vn(): return sokoban_drc_attn(3, 3, mask_neighborhood="vonneumann")      # maxplus, von Neumann
