@@ -252,7 +252,7 @@ def sokoban_drc_attn(
             num_heads=4,
             use_attention_mask=use_attention_mask,
             mask_neighborhood=mask_neighborhood,
-            n_global=4,
+            n_global=0,  # pure local: each cell attends ONLY to its king-neighbours + self (no global/register tokens)
             readout=readout,
         ),
         n_recurrent=n_recurrent,

@@ -99,7 +99,7 @@ class AttentionCellConfig:
     mask_neighborhood: Literal["king", "vonneumann"] = "king"  # only used when masking is ON
 
     # --- global / register tokens (the attention analogue of pool_and_inject) ---
-    n_global: int = 4                           # 0 disables them entirely
+    n_global: int = 0                           # 0 = pure local (no global/register tokens); >0 adds that many
 
     # --- aggregation readout: how each cell combines its neighbours' values ---
     readout: Literal["softmax", "maxplus"] = "maxplus"  # soft Bellman max-plus (VIN-like, default) vs convex average
