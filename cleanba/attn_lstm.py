@@ -106,6 +106,16 @@ class AttentionCellConfig:
     maxplus_beta_init: float = 1.0              # maxplus only: initial inverse temp (higher = closer to hard max)
     maxplus_beta_max: float = 10.0             # maxplus only: cap on the (learnable) inverse temp, for numerical stability
 
+    # --- direction-specific value routing (VIN/conv-aligned) ---
+    # When True, each relative offset gets its OWN value projection W_v^offset (instead of one shared
+    # W_v), so a neighbour's value is transported differently depending on the direction it comes from
+    # -- exactly the per-offset transition routing a Bellman backup / value-iteration needs (and what a
+    # 3x3 conv has but shared-W_v attention lacks). Implemented as an efficient NHWC shift-based local
+    # message pass (one shift per offset, O(S*offsets*dh)), so it does NOT materialize the (S,Kn,dh)
+    # tensor. Pure-local only (requires n_global=0). The content-dependent attention weight (q.k +
+    # rel_bias) and the maxplus/softmax aggregation are unchanged; only the value path becomes anisotropic.
+    directional_value: bool = False
+
     # --- priors / stability ---
     use_rel_bias: bool = True                   # offset-tied relative-position bias (soft-conv prior)
     pre_norm: bool = True                        # RMSNorm the tokens before q/k/v projection
@@ -179,6 +189,83 @@ class AttentionCell(nn.RNNCellBase):
         assert C % nh == 0, f"features={C} must be divisible by num_heads={nh}"
         dh = C // nh
         S = H * W
+
+        # ----------------------------------------------------------------------------------------
+        # Direction-specific value routing (VIN/conv-aligned). Each relative offset gets its OWN
+        # value projection W_v^offset, so a neighbour's value is transported differently depending
+        # on the direction it arrives from -- the per-offset transition routing a Bellman backup
+        # needs (a 3x3 conv has it; shared-W_v attention does not). Efficient NHWC shift impl: one
+        # shift per offset, no (S,Kn,dh) tensor. Pure-local only.
+        # ----------------------------------------------------------------------------------------
+        if self.cfg.directional_value:
+            assert self.cfg.n_global == 0, "directional_value requires n_global=0 (pure local)"
+            assert self.cfg.use_attention_mask, "directional_value is a local message pass; needs the mask"
+            h = carry.h
+            if self.cfg.pre_norm:
+                h = nn.RMSNorm(name="pre_norm")(h)  # (B,H,W,C)
+
+            if self.cfg.mask_neighborhood == "king":
+                offsets = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1)]
+            else:  # vonneumann
+                offsets = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+            Onb = len(offsets)
+
+            def shift(x, dr, dc):  # y[b,r,c] = x[b,r+dr,c+dc], 0 outside the grid (no wraparound)
+                xp = jnp.pad(x, ((0, 0), (1, 1), (1, 1), (0, 0)))
+                return xp[:, 1 + dr : 1 + dr + H, 1 + dc : 1 + dc + W, :]
+
+            q_layer = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="q")
+            k_layer = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="k")  # shared k
+            q = q_layer(h)  # (B,H,W,nh,dh)
+            rel = self.param("rel_bias_dir", nn.initializers.zeros, (nh, Onb))  # per-offset logit bias
+            ones = jnp.ones((B, H, W, 1), dtype=h.dtype)
+
+            L_list, V_list, valid_list = [], [], []
+            for oi, (dr, dc) in enumerate(offsets):
+                h_s = shift(h, dr, dc)                                   # neighbour hidden (B,H,W,C)
+                valid = shift(ones, dr, dc)[..., 0]                      # (B,H,W) 1 if neighbour in-grid
+                k_o = k_layer(h_s)                                       # (B,H,W,nh,dh)
+                v_o = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name=f"v_{oi}")(h_s)  # PER-OFFSET value
+                logit = (q * k_o).sum(-1) * (dh ** -0.5) + rel[:, oi][None, None, None, :]  # (B,H,W,nh)
+                logit = jnp.where(valid[..., None] > 0, logit, -1e9)
+                L_list.append(logit)
+                V_list.append(v_o)
+                valid_list.append(valid)
+
+            L = jnp.stack(L_list, axis=-1)                  # (B,H,W,nh,Onb)
+            V = jnp.stack(V_list, axis=-1)                  # (B,H,W,nh,dh,Onb)
+            Kvalid = jnp.stack(valid_list, axis=-1).sum(-1)  # (B,H,W)
+
+            if self.cfg.readout == "softmax":
+                w = jax.nn.softmax(L, axis=-1)                      # (B,H,W,nh,Onb)
+                attn = (w[..., None, :] * V).sum(-1)                # (B,H,W,nh,dh)
+            elif self.cfg.readout == "maxplus":
+                bm = self.cfg.maxplus_beta_max
+                raw0 = math.log(self.cfg.maxplus_beta_init / (bm - self.cfg.maxplus_beta_init))
+                beta = bm * nn.sigmoid(self.param("beta", nn.initializers.constant(raw0), (nh,)))  # (nh,)
+                s = beta[None, None, None, :, None, None] * (L[..., None, :] + V)  # (B,H,W,nh,dh,Onb)
+                m = jnp.max(s, axis=-1, keepdims=True)                            # stable logsumexp
+                lse = m[..., 0] + jnp.log(jnp.sum(jnp.exp(s - m), axis=-1))       # (B,H,W,nh,dh)
+                logK = jnp.log(jnp.maximum(Kvalid, 1.0))[..., None, None]         # (B,H,W,1,1)
+                attn = (lse - logK) / beta[None, None, None, :, None]            # (B,H,W,nh,dh)
+            else:
+                raise ValueError(f"{self.cfg.readout=}")
+
+            a = nn.DenseGeneral(
+                C, axis=(-2, -1), use_bias=False, name="out",
+                kernel_init=nn.initializers.variance_scaling(0.1, "fan_in", "truncated_normal"),
+            )(attn)  # (B,H,W,C)
+
+            gate_in = jnp.concatenate([inputs, prev_layer_hidden, a], axis=-1)
+            gates = nn.Dense(4 * C, name="gate")(gate_in)
+            i, j, f, o = jnp.split(gates, 4, axis=-1)
+            i = jnp.tanh(i)
+            j = nn.sigmoid(j)
+            f = nn.sigmoid(f + self.cfg.forget_bias)
+            o = nn.sigmoid(o) if self.cfg.output_activation == "sigmoid" else jnp.tanh(o)
+            new_c = carry.c * f + i * j
+            new_h = jnp.tanh(new_c) * o
+            return LSTMCellState(c=new_c, h=new_h), new_h
 
         def tok(z):  # (B, H, W, X) -> (B, S, X)
             return z.reshape(B, S, z.shape[-1])

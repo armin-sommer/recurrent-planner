@@ -232,6 +232,7 @@ def sokoban_drc_attn(
     use_attention_mask: bool = True,
     readout: Literal["softmax", "maxplus"] = "maxplus",
     mask_neighborhood: Literal["king", "vonneumann"] = "king",
+    directional_value: bool = False,
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
@@ -254,6 +255,7 @@ def sokoban_drc_attn(
             mask_neighborhood=mask_neighborhood,
             n_global=0,  # pure local: each cell attends ONLY to its king-neighbours + self (no global/register tokens)
             readout=readout,
+            directional_value=directional_value,  # per-offset value projection (VIN/conv-aligned routing)
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),
@@ -264,6 +266,8 @@ def sokoban_drc_attn(
 
 # fmt: off
 def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)                                         # maxplus, king (default)
+def sokoban_drc_attn_3_3_dir(): return sokoban_drc_attn(3, 3, directional_value=True)             # + per-offset value routing (VIN-aligned)
+def sokoban_drc_attn_3_3_dir_softmax(): return sokoban_drc_attn(3, 3, readout="softmax", directional_value=True)
 def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
 def sokoban_drc_attn_3_3_vn(): return sokoban_drc_attn(3, 3, mask_neighborhood="vonneumann")      # maxplus, von Neumann
 def sokoban_drc_attn_3_3_softmax(): return sokoban_drc_attn(3, 3, readout="softmax")              # old convex-average attention
