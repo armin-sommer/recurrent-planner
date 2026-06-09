@@ -233,8 +233,8 @@ def sokoban_drc_attn(
     use_attention_mask: bool = True,
     readout: Literal["softmax", "maxplus"] = "maxplus",
     mask_neighborhood: Literal["king", "vonneumann"] = "king",
-    directional_value: bool = False,
-    relative_key: bool = False,
+    directional_value: bool = True,   # ON by default: per-offset value routing (VIN/conv-aligned)
+    relative_key: bool = True,        # ON by default: content x direction in the score
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
@@ -245,6 +245,8 @@ def sokoban_drc_attn(
     the 4 one-move-reachable cells). `Args.net` is mutable, so we reuse the DRC env/loss/optimizer
     setup and just swap the backbone.
     """
+    # relative_key only takes effect in the directional path; make the incongruence loud, not silent.
+    assert directional_value or not relative_key, "relative_key=True requires directional_value=True"
     args = sokoban_drc33_59()  # inherit the PROVEN recipe (grad clip 2.5e-4, vtrace_lambda 0.5,
     # light L2, valid_medium eval), then swap in the attention/cellwise backbone below.
     # (Previously based on the weaker `sokoban_drc` recipe, which confounded the DRC comparison.)
@@ -268,14 +270,15 @@ def sokoban_drc_attn(
 
 
 # fmt: off
-def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)                                         # maxplus, king (default)
+def sokoban_drc_attn_3_3(): return sokoban_drc_attn(3, 3)                                         # FULL model: maxplus, king, directional value + relative key (defaults ON)
+def sokoban_drc_attn_3_3_plain(): return sokoban_drc_attn(3, 3, directional_value=False, relative_key=False)  # shared-W_v dense-value baseline (ablation)
 def sokoban_drc_attn_3_3_dir(): return sokoban_drc_attn(3, 3, directional_value=True)             # + per-offset value routing (VIN-aligned)
 def sokoban_drc_attn_3_3_dir_relk(): return sokoban_drc_attn(3, 3, directional_value=True, relative_key=True)  # + content x direction key
 def sokoban_drc_attn_3_3_dir_softmax(): return sokoban_drc_attn(3, 3, readout="softmax", directional_value=True)
 def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
 def sokoban_drc_attn_3_3_vn(): return sokoban_drc_attn(3, 3, mask_neighborhood="vonneumann")      # maxplus, von Neumann
 def sokoban_drc_attn_3_3_softmax(): return sokoban_drc_attn(3, 3, readout="softmax")              # old convex-average attention
-def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False)        # maxplus, dense (heavy: large Kn)
+def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False, directional_value=False, relative_key=False)  # dense attention (no mask); directional needs the mask so it's off here
 # fmt: on
 
 

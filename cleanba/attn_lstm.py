@@ -129,7 +129,7 @@ class AttentionCellConfig:
 
     # --- gate (matches ConvLSTMCellConfig) ---
     forget_bias: float = 0.0
-    output_activation: Literal["sigmoid", "tanh"] = "sigmoid"
+    output_activation: Literal["sigmoid", "tanh"] = "tanh"  # match the proven DRC ConvLSTM output gate
 
 
 @dataclasses.dataclass(frozen=True)
