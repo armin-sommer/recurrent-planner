@@ -138,6 +138,14 @@ class AttentionCellConfig:
     forget_bias: float = 0.0
     output_activation: Literal["sigmoid", "tanh"] = "tanh"  # match the proven DRC ConvLSTM output gate
 
+    # --- attention message strength at init ---
+    # Scale of the attention OUTPUT projection W_o (variance_scaling fan_in). The attention message
+    # `a` is the ONLY path by which a cell's spatial neighbourhood reaches its LSTM gate in this
+    # pure-attention core (no conv_hh, no pool-and-inject), so a tiny W_o (the old hardcoded 0.1)
+    # leaves the cell nearly spatially blind at init -- it must then climb into the spatial-routing
+    # (planning) regime under sparse RL reward. Raise toward ~1.0 to engage routing from step 0.
+    out_init_scale: float = 0.1
+
 
 @dataclasses.dataclass(frozen=True)
 class AttentionLSTMConfig(BaseLSTMConfig):
@@ -276,7 +284,7 @@ class AttentionCell(nn.RNNCellBase):
 
             a = nn.DenseGeneral(
                 C, axis=(-2, -1), use_bias=False, name="out",
-                kernel_init=nn.initializers.variance_scaling(0.1, "fan_in", "truncated_normal"),
+                kernel_init=nn.initializers.variance_scaling(self.cfg.out_init_scale, "fan_in", "truncated_normal"),
             )(attn)  # (B,H,W,C)
 
             gate_in = jnp.concatenate([inputs, prev_layer_hidden, a], axis=-1)
@@ -379,7 +387,7 @@ class AttentionCell(nn.RNNCellBase):
         # toward 1.0 if attention engages too slowly.
         a = nn.DenseGeneral(
             C, axis=(-2, -1), use_bias=False, name="out",
-            kernel_init=nn.initializers.variance_scaling(0.1, "fan_in", "truncated_normal"),
+            kernel_init=nn.initializers.variance_scaling(self.cfg.out_init_scale, "fan_in", "truncated_normal"),
         )(attn)
 
         # --- fused gates (local ih term + attention message) and the IDENTICAL LSTM update ---

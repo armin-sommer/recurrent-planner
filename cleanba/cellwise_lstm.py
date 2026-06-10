@@ -27,6 +27,11 @@ class CellwiseLSTMCellConfig:
     aggregation: Literal["mean", "sum", "max"] = "mean"
     use_edge_weights: bool = True  # offset-tied learned edge weights (soft-conv prior); mean/sum only
 
+    # --- message expressivity (pool-free levers to break the value-learning deadlock) ---
+    zero_init_message: bool = True   # msg projection zeros-init (gated identity at init). False -> standard init: spatial path ACTIVE from step 0, like DRC's conv.
+    per_offset_message: bool = False  # True -> direction-specific final projection (per-offset C-matrix == a real conv kernel) instead of one shared map + scalar edge weight. Requires use_neighbor_mask=True and aggregation="sum".
+    attend_inputs: bool = False  # DRC conv_ih analog: fold the live obs + top-down hidden into the message SOURCE so the spatial op processes the CURRENT board, not only the recurrent carry.
+
     # --- global / register tokens (the analogue of pool_and_inject) ---
     n_global: int = 4  # 0 disables them entirely
 
@@ -105,10 +110,13 @@ class CellwiseLSTMCell(nn.RNNCellBase):
             return z.reshape(B, S, z.shape[-1])
 
         h_tok = tok(carry.h)
+        # Local "ih" term: the new observation + the top-down hidden.
+        in_tok = tok(jnp.concatenate([inputs, prev_layer_hidden], axis=-1))
+        if self.cfg.attend_inputs:  # DRC conv_ih analog: fold the live obs into the message SOURCE so the
+            # spatial op (per-offset conv / aggregation) processes the CURRENT board, not only carry.h.
+            h_tok = h_tok + nn.Dense(C, name="in_proj")(in_tok)
         if self.cfg.pre_norm:
             h_tok = nn.RMSNorm(name="pre_norm")(h_tok)  # per-token norm over the channel axis
-        # Local "ih" term: the new observation + the top-down hidden, injected per-token (no mixing).
-        in_tok = tok(jnp.concatenate([inputs, prev_layer_hidden], axis=-1))
 
         # --- global / register tokens == pool_and_inject (recomputed each step, NOT in the carry) ---
         if self.cfg.n_global > 0:
@@ -120,15 +128,23 @@ class CellwiseLSTMCell(nn.RNNCellBase):
         else:
             src = h_tok
 
-        # --- message F_phi(h(s')): shared per-source MLP; final layer zeros-init -> msg starts at 0,
-        #     so the cell is a gated identity at init (mirrors attn_lstm's zeros-init W_o). ---
+        # --- message F_phi(h(s)): shared per-source MLP hidden layers, then either ONE shared final
+        #     projection (msg_out, aggregated with scalar edge weights) or, if per_offset_message, a
+        #     DIRECTION-SPECIFIC per-offset map (== a real conv kernel). zeros-init keeps the cell a
+        #     gated identity at start; non-zero init turns the spatial path on from step 0 (like DRC). ---
+        msg_init = (nn.initializers.zeros if self.cfg.zero_init_message
+                    else nn.initializers.variance_scaling(1.0, "fan_in", "truncated_normal"))
         m = src
         for i, hid in enumerate(self.cfg.message_hiddens):
             m = nn.relu(nn.Dense(hid, name=f"msg_hidden_{i}")(m))
-        m = nn.Dense(C, name="msg_out", use_bias=False, kernel_init=nn.initializers.zeros)(m)  # (B, S+G, C)
-
-        # --- aggregate messages over each cell's neighbours: the graph N ---
-        msg = self._aggregate(m, H, W)  # (B, S, C)
+        if self.cfg.per_offset_message:
+            assert self.cfg.use_neighbor_mask, "per_offset_message is a local op; needs the mask"
+            assert self.cfg.aggregation == "sum", "per_offset_message uses sum aggregation (a conv)"
+            msg = self._aggregate_per_offset(m, H, W, msg_init)  # (B, S, C)
+        else:
+            m = nn.Dense(C, name="msg_out", use_bias=False, kernel_init=msg_init)(m)  # (B, S+G, C)
+            # --- aggregate messages over each cell's neighbours: the graph N ---
+            msg = self._aggregate(m, H, W)  # (B, S, C)
 
         # --- fused gates (local ih term + aggregated message) and the IDENTICAL LSTM update ---
         gates = nn.Dense(4 * C, name="gate")(jnp.concatenate([in_tok, msg], axis=-1))  # (B, S, 4C)
@@ -167,11 +183,32 @@ class CellwiseLSTMCell(nn.RNNCellBase):
             adj = jnp.concatenate([adj, jnp.ones((S, G), dtype=bool)], axis=1)  # (S, S+G)
 
         if self.cfg.aggregation == "max":
-            # Masked max over the neighbour (source) axis. Materializes (B, S, S+G, C); fine at grid
-            # scale (S ~ 100). Self-edge guarantees each row has >=1 unmasked entry, so no -inf leaks.
+            # Memory-efficient masked/dense max. The naive (B, S, S+G, C) materialization OOMs at the
+            # training batch size (B ~ 1e4 -> ~24 GB); reduce directly instead. Masked = elementwise max
+            # over the <=9 neighbour OFFSETS via padded shifts (O(B*S*C*offsets)); dense = one global max.
+            B = m.shape[0]
+            Cc = m.shape[-1]
             neg = jnp.finfo(m.dtype).min
-            masked = jnp.where(adj[None, :, :, None], m[:, None, :, :], neg)  # (B, S, S+G, C)
-            return masked.max(axis=2)
+            m_sp = m[:, :S, :].reshape(B, H, W, Cc)  # spatial tokens as a feature map
+            if self.cfg.use_neighbor_mask:
+                if self.cfg.mask_neighborhood == "king":
+                    offsets = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1)]
+                else:
+                    offsets = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+
+                def _shift_neg(x, dr, dc):  # out-of-grid -> -inf so it never wins the max
+                    xp = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)], constant_values=neg)
+                    return xp[:, 1 + dr : 1 + dr + H, 1 + dc : 1 + dc + W, :]
+
+                acc = _shift_neg(m_sp, *offsets[0])
+                for off in offsets[1:]:
+                    acc = jnp.maximum(acc, _shift_neg(m_sp, *off))
+                out = acc.reshape(B, S, Cc)
+            else:  # dense all-to-all: each cell's neighbourhood is the whole grid -> global max
+                out = jnp.broadcast_to(m_sp.reshape(B, S, Cc).max(axis=1, keepdims=True), (B, S, Cc))
+            if G > 0:  # every cell also sees all global tokens
+                out = jnp.maximum(out, m[:, S:, :].max(axis=1, keepdims=True))
+            return out
 
         # mean / sum: a single (weighted) adjacency matmul, no (S, S+G, C) intermediate.
         weight = adj.astype(m.dtype)  # (S, S+G)
@@ -188,6 +225,40 @@ class CellwiseLSTMCell(nn.RNNCellBase):
         elif self.cfg.aggregation != "sum":
             raise ValueError(f"{self.cfg.aggregation=}")
         return jnp.einsum("sk,bkc->bsc", weight, m)  # (B, S, C)
+
+    def _aggregate_per_offset(self, m: jax.Array, H: int, W: int, init) -> jax.Array:
+        """Direction-specific local message passing == a 3x3 conv on the hidden message ``m`` (B, S+G, hid).
+
+        Instead of one shared output projection + a scalar offset weight (``_aggregate``), each relative
+        offset o in the neighbourhood gets its OWN linear map W_o (hid->C): a neighbour's content is routed
+        differently depending on the direction it arrives from -- the anisotropic per-offset routing a 3x3
+        conv has but the shared-message+scalar-weight path lacks. Zero-padded at the boundary (conv SAME).
+        """
+        B = m.shape[0]
+        hid = m.shape[-1]
+        C = self.cfg.features
+        S = H * W
+        G = self.cfg.n_global
+        m_sp = m[:, :S, :].reshape(B, H, W, hid)  # spatial tokens as a feature map
+        if self.cfg.mask_neighborhood == "king":
+            offsets = [(dr, dc) for dr in (-1, 0, 1) for dc in (-1, 0, 1)]
+        else:
+            offsets = [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]
+        Onb = len(offsets)
+        Wv = self.param("v_offset", init, (Onb, hid, C))  # per-offset linear maps (the conv kernel)
+
+        def _shift0(x, dr, dc):  # zero-padded shift (out-of-grid -> 0, i.e. conv SAME)
+            xp = jnp.pad(x, [(0, 0), (1, 1), (1, 1), (0, 0)])
+            return xp[:, 1 + dr : 1 + dr + H, 1 + dc : 1 + dc + W, :]
+
+        acc = jnp.zeros((B, H, W, C), m.dtype)
+        for jj, (dr, dc) in enumerate(offsets):
+            acc = acc + jnp.einsum("bhwk,kc->bhwc", _shift0(m_sp, dr, dc), Wv[jj])
+        out = acc.reshape(B, S, C)
+        if G > 0:  # every cell also receives the pooled global tokens through their own map
+            Wg = self.param("v_global", init, (hid, C))
+            out = out + jnp.einsum("bgk,kc->bc", m[:, S:, :], Wg)[:, None, :]
+        return out
 
     @nn.nowrap
     def initialize_carry(self, rng: jax.Array, input_shape: tuple[int, ...]) -> LSTMCellState:
