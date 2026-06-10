@@ -14,6 +14,13 @@ We are building the empirical case that a neural backbone split into **state-ind
 > - Commit `8e0d120` forces an exact-final checkpoint (the `eval_at_steps` schedule otherwise stops ~5% short of the last update).
 > - The old 2 pods (PTY pod 1 + TCP pod 2 `157.66.254.33:19373`) are being **retired** once the new matrix is confirmed on-GPU; their 80M data stays as preliminary.
 > - **Next after matrix:** standalone planning eval (`python -m cleanba.load_and_eval load_other_run=<run> only_last_checkpoint=true`, extended `EvalConfig.steps_to_think`), then a version-controlled `results/` dir (data CSV/JSON + `plot.py` + figures + RESULTS.md).
+>
+> **OVERNIGHT RUNBOOK (start 2026-06-10 ~23:20Z; matrix ETA ~late-evening PT). Eval was trimmed (commit `71c6f17`: cellwise `steps_to_think=[0,8]` + ~every-10M eval points) → ~8k SPS/arm. Autonomous sequence once the 6 cellwise arms exit:**
+> 1. **Detect done:** `pgrep -cf cleanba_impala` → 0 (per-arm: no proc with its `base_run_dir`). Each leaves a final ckpt at `…/<arm>/default/wandb/offline-run-*/local-files/cp_<~200M>/` (commit `8e0d120` forces the exact-final save).
+> 2. **Planning eval** per final ckpt: `cd /workspace/recurrent-planner && .venv/bin/python -m cleanba.load_and_eval load_other_run=<arm_run_dir> only_last_checkpoint=true` with eval `steps_to_think=[0,2,4,8,12,16,24,32,48,64]` + higher `n_episode_multiple` (verify flag style: bare `k=v` farconf vs `--k`). Writes `*_metrics_dict.pkl`.
+> 3. **Build `results/`** (repo): metrics → `results/data/*.{csv,json}`; `results/plot.py` → success-vs-thinking-ticks per arm + local-vs-dense bars + step-curves → `results/figures/`; `results/RESULTS.md`. Commit + push.
+> 4. **Launch attn (2nd non-conv instance), one arm/GPU, 200M, `n_global=0`, eval-trimmed:** masked `sokoban_drc_attn_3_3` vs dense `sokoban_drc_attn_3_3_nomask` (= the masked-vs-dense primary test in attention); fill spare GPUs with `_plain`/`_softmax` ablations. Apply the same eval trim to `sokoban_drc_attn` first. Write `/workspace/claude_experiments/driver_attn_200m.sh` (mirror `driver_matrix_200m.sh`).
+> 5. After attn: eval + fold into `results/`. (Old 2 pods TERMINATED — historical attn runs gone, not needed.)
 
 ---
 ## 1. THE CLAIM
