@@ -6,6 +6,15 @@ _Last updated 2026-06-10 ~21:30Z by Claude (Opus), mid-project. This file is the
 ## 0. ONE-PARAGRAPH STATE
 We are building the empirical case that a neural backbone split into **state-indexed latent cells**, updated each "thinking step" by a **local relational rule `F_φ`** over the MDP's transition graph, learns **lookahead policy improvement** (GPI-style) — and that this is a property of the **relational structure + aggregation operator**, NOT of convolution specifically. Established: harness validated (DRC solves); **pure-local conv (no pool-and-inject) solves** ~12%; a **NON-conv max-aggregation GNN also learns & solves** ~7% with a thinking-time benefit (the generality result); the cellwise deadlock was diagnosed & fixed (it needed the **live obs folded into the message source** = `attend_inputs`). **NOW:** running the **mask × aggregation ablation matrix at 80M steps, split across two H100 pods**, plus an attn re-run to come.
 
+> **⚡ INFRA UPDATE (2026-06-10 ~22:30Z): moved to a single 6×H100 node, full matrix runs in PARALLEL at 200M.**
+> The two single-H100 pods ran the matrix *sequentially* at 80M. We now run the **full 6-arm mask×aggregation matrix at 200M, one arm per GPU**, on a fresh 6×H100 node → ~one arm's wall-clock (~5–6h) vs ~20h sequential. These are **fresh reruns** (matched LR schedule), NOT resumes — checkpoints DO exist for the 80M runs (`…/wandb/offline-run-*/local-files/cp_<step>/`, save_model on by default), but resuming the already-annealed runs would warm-restart the LR.
+> - **SSH (direct TCP, supports scp/heredocs):** `ssh -p 10285 -i ~/.ssh/id_ed25519 root@157.66.254.38` (PTY proxy alt: `cj0gb8s6i2bu40-644119d0@ssh.runpod.io`). 224 cores, ~2 TB RAM (kills the old host-mem SIGKILL constraint → parallel arms are fine).
+> - **Layout:** repo `/workspace/recurrent-planner` (branch `recurrent-attention-core`, built via `build_env_pod2.sh`); experiments `/workspace/claude_experiments/{logs,...}`; boxoban cache `/workspace/sokoban_cache` → symlinked `/opt/sokoban_cache`. Container disk is only 50G → **everything lives on the `/workspace` network volume.**
+> - **Launcher:** `/workspace/claude_experiments/driver_matrix_200m.sh` → arms `{local,dense}_{max,mean,sum}_200m`. **GOTCHA: pin `CUDA_VISIBLE_DEVICES=0..5` (one GPU per arm)** or each JAX process grabs all 6 and they collide.
+> - Commit `8e0d120` forces an exact-final checkpoint (the `eval_at_steps` schedule otherwise stops ~5% short of the last update).
+> - The old 2 pods (PTY pod 1 + TCP pod 2 `157.66.254.33:19373`) are being **retired** once the new matrix is confirmed on-GPU; their 80M data stays as preliminary.
+> - **Next after matrix:** standalone planning eval (`python -m cleanba.load_and_eval load_other_run=<run> only_last_checkpoint=true`, extended `EvalConfig.steps_to_think`), then a version-controlled `results/` dir (data CSV/JSON + `plot.py` + figures + RESULTS.md).
+
 ---
 ## 1. THE CLAIM
 - **Assumption 1 (latent-state graph):** cells `h_t(s) ∈ R^n` indexed by state `s`; edges `N` where MDP transition `s→s'` is physically possible.
