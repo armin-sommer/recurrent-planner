@@ -310,6 +310,12 @@ def sokoban_drc_cellwise(n_recurrent: int, num_repeats: int, aggregation: str = 
         mlp_hiddens=(256,),
         repeats_per_step=num_repeats,
     )
+    # Lighten the DURING-training eval (it dominates CPU on the parallel matrix runs): keep just
+    # 2 thinking ticks (0 + 8) and sparser eval points. The full steps_to_think sweep with error
+    # bars is produced post-hoc by cleanba.load_and_eval on the saved checkpoints.
+    args.eval_envs["valid_medium"].steps_to_think = [0, 8]
+    _bs = 256 * 20  # local_num_envs * num_steps (inherited from sokoban_resnet59)
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(10e6 / _bs) * i for i in range(1, 21)])
     return args
 
 
