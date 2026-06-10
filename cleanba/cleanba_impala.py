@@ -868,7 +868,13 @@ def train(
                     save_train_state(dir, args, agent_state, update)
 
             if args.learner_policy_version >= runtime_info.num_updates:
-                # The program is finished!
+                # The program is finished! Force a final checkpoint if the eval_at_steps
+                # schedule stopped short of this last update, so we always keep the final weights.
+                if args.save_model and args.learner_policy_version not in args.eval_at_steps:
+                    writer.maybe_save_barrier()
+                    writer.reset_save_barrier()
+                    with writer.save_dir(global_step) as dir:
+                        save_train_state(dir, args, agent_state, update)
                 return agent_state
     return agent_state
 
