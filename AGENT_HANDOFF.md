@@ -21,6 +21,7 @@ We are building the empirical case that a neural backbone split into **state-ind
 > 3. **Build `results/`** (repo): metrics → `results/data/*.{csv,json}`; `results/plot.py` → success-vs-thinking-ticks per arm + local-vs-dense bars + step-curves → `results/figures/`; `results/RESULTS.md`. Commit + push.
 > 4. **Launch attn (2nd non-conv instance), one arm/GPU, 200M, `n_global=0`, eval-trimmed:** masked `sokoban_drc_attn_3_3` vs dense `sokoban_drc_attn_3_3_nomask` (= the masked-vs-dense primary test in attention); fill spare GPUs with `_plain`/`_softmax` ablations. Apply the same eval trim to `sokoban_drc_attn` first. Write `/workspace/claude_experiments/driver_attn_200m.sh` (mirror `driver_matrix_200m.sh`).
 > 5. After attn: eval + fold into `results/`. (Old 2 pods TERMINATED — historical attn runs gone, not needed.)
+> - **`dense_sum_200m` caveat/FINDING:** with matched init it diverged to nan (~step 8M) — dense + unnormalized sum over ~100 cells blows up. Relaunched on GPU5 with `net.recurrent.zero_init_message=true` (the ONLY arm differing; other 5 use `false`) and it trains fine. Masked `local_sum` is stable with standard init. Report as evidence the dense graph makes sum-aggregation ill-posed; the primary mask claim (local-vs-dense) stays clean via the fully-matched MAX and MEAN pairings.
 
 ---
 ## 1. THE CLAIM
