@@ -268,6 +268,11 @@ def sokoban_drc_attn(
         mlp_hiddens=(256,),
         repeats_per_step=num_repeats,
     )
+    # Lighten the DURING-training eval (same as the cellwise matrix): 2 ticks + sparse points.
+    # Full steps_to_think sweep is recovered post-hoc via cleanba.load_and_eval on the checkpoints.
+    args.eval_envs["valid_medium"].steps_to_think = [0, 8]
+    _bs = 256 * 20  # local_num_envs * num_steps
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(10e6 / _bs) * i for i in range(1, 21)])
     return args
 
 

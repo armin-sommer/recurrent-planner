@@ -69,10 +69,37 @@ def default_eval_envs(CACHE_PATH=Path("/opt/sokoban_cache")) -> dict[str, EvalCo
     return envs
 
 
+def planning_eval_envs(CACHE_PATH=Path("/opt/sokoban_cache")) -> dict[str, EvalConfig]:
+    # Post-hoc planning eval for the overnight matrix/attn runs: an EXTENDED thinking-step sweep on
+    # valid_medium (the training eval set). 500 envs x 8 = 4000 levels per tick -> tight CIs, fast
+    # enough to run all 6 arms in parallel on the 6-GPU node. (default_eval_envs left untouched.)
+    steps_to_think = [0, 2, 4, 8, 12, 16, 24, 32, 48]
+    envs = dict(
+        valid_medium=EvalConfig(
+            EnvpoolBoxobanConfig(
+                seed=0,
+                load_sequentially=True,
+                max_episode_steps=120,
+                min_episode_steps=120,
+                num_envs=500,
+                cache_path=CACHE_PATH,
+                split="valid",
+                difficulty="medium",
+                n_levels_to_load=4000,
+            ),
+            n_episode_multiple=8,
+            steps_to_think=steps_to_think,
+        ),
+    )
+    for env in envs.values():
+        assert env.env.num_envs * env.n_episode_multiple == env.env.n_levels_to_load
+    return envs
+
+
 @dataclasses.dataclass
 class LoadAndEvalArgs:
     load_other_run: Path
-    eval_envs: dict[str, EvalConfig] = dataclasses.field(default_factory=default_eval_envs)
+    eval_envs: dict[str, EvalConfig] = dataclasses.field(default_factory=planning_eval_envs)
     only_last_checkpoint: bool = False
     checkpoints_to_load: List[str] = dataclasses.field(default_factory=list)
     save_logs: bool = True
