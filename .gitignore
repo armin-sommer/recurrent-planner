@@ -146,4 +146,4 @@ envpool
 .sokoban_cache
 .build
 .vscode
-k8s_copy/
+k8s_copy/results/checkpoints/
