@@ -73,7 +73,7 @@ def planning_eval_envs(CACHE_PATH=Path("/opt/sokoban_cache")) -> dict[str, EvalC
     # Post-hoc planning eval for the overnight matrix/attn runs: an EXTENDED thinking-step sweep on
     # valid_medium (the training eval set). 500 envs x 8 = 4000 levels per tick -> tight CIs, fast
     # enough to run all 6 arms in parallel on the 6-GPU node. (default_eval_envs left untouched.)
-    steps_to_think = [0, 2, 4, 8, 12, 16, 24, 32, 48]
+    steps_to_think = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     envs = dict(
         train_unfiltered=EvalConfig(
             EnvpoolBoxobanConfig(
