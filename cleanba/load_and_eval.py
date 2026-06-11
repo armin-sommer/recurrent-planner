@@ -85,9 +85,9 @@ def planning_eval_envs(CACHE_PATH=Path("/opt/sokoban_cache")) -> dict[str, EvalC
                 cache_path=CACHE_PATH,
                 split="train",
                 difficulty="unfiltered",
-                n_levels_to_load=4000,
+                n_levels_to_load=1000,
             ),
-            n_episode_multiple=8,
+            n_episode_multiple=2,
             steps_to_think=steps_to_think,
         ),
         valid_medium=EvalConfig(
@@ -100,9 +100,9 @@ def planning_eval_envs(CACHE_PATH=Path("/opt/sokoban_cache")) -> dict[str, EvalC
                 cache_path=CACHE_PATH,
                 split="valid",
                 difficulty="medium",
-                n_levels_to_load=4000,
+                n_levels_to_load=1000,
             ),
-            n_episode_multiple=8,
+            n_episode_multiple=2,
             steps_to_think=steps_to_think,
         ),
     )
