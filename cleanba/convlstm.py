@@ -147,10 +147,18 @@ class BaseLSTM(nn.Module):
             carry[-1] = LSTMCellState(c=carry[-1].c, h=prev_layer_state)
         return carry, ()
 
-    def _apply_cells(self, carry: LSTMState, inputs: jax.Array, episode_starts: jax.Array) -> tuple[LSTMState, jax.Array]:
+    def _apply_cells(
+        self, carry: LSTMState, inputs: jax.Array, episode_starts: jax.Array, n_active=None
+    ) -> tuple[LSTMState, jax.Array]:
         """
-        Applies all cells in `self.cell_list`, several times: `self.cfg.repeats_per_step` times. Preprocesses the carry
-        so it gets zeroed at the start of an episode
+        Applies all cells in `self.cell_list`, `self.cfg.repeats_per_step` times (the inner "thinking"
+        ticks). Preprocesses the carry so it gets zeroed at the start of an episode.
+
+        `n_active` (scalar, optional) gates the *thinking depth*: ticks with index >= n_active are
+        identity pass-throughs, so the effective number of thinking ticks is min(n_active, repeats).
+        Used for variable-thinking-depth training and the depth sweep at eval (default None -> full
+        repeats_per_step, i.e. unchanged). The scan always runs the STATIC repeats_per_step length, so
+        JAX shapes stay static and there are no recompiles as n_active varies.
         """
         assert len(inputs.shape) == 4
         assert len(episode_starts.shape) == 1
@@ -158,27 +166,59 @@ class BaseLSTM(nn.Module):
         not_reset = ~episode_starts
         carry = jax.tree.map(lambda z: z * _broadcast_towards_the_left(z, not_reset), carry)
 
-        apply_cells_once_fn = nn.scan(
-            self.__class__.apply_cells_once, variable_broadcast="params", split_rngs={"params": False}
+        K = self.cfg.repeats_per_step
+        if n_active is None:
+            n_active = K  # full depth: every tick active == original behaviour
+
+        def gated_once(mod, carry, inp, k):
+            updated, _ = mod.apply_cells_once(carry, inp)
+            active = jnp.asarray(k < n_active)  # () scalar depth, or (B,) per-env depth; tick-invariant
+
+            def sel(old, new):
+                a = active if active.ndim == 0 else _broadcast_towards_the_left(new, active)
+                return jnp.where(a, new, old)
+
+            carry = jax.tree.map(sel, carry, updated)
+            return carry, ()
+
+        apply_cells_once_fn = nn.scan(gated_once, variable_broadcast="params", split_rngs={"params": False})
+        carry, _ = apply_cells_once_fn(
+            self, carry, jnp.broadcast_to(inputs, (K, *inputs.shape)), jnp.arange(K)
         )
-        carry, _ = apply_cells_once_fn(self, carry, jnp.broadcast_to(inputs, (self.cfg.repeats_per_step, *inputs.shape)))
 
         out = carry[-1].h
         return carry, out
 
-    def step(self, carry: LSTMState, observations: jax.Array, episode_starts: jax.Array) -> tuple[LSTMState, jax.Array]:
-        """Applies the RNN for a single step"""
+    def step(
+        self, carry: LSTMState, observations: jax.Array, episode_starts: jax.Array, n_active=None
+    ) -> tuple[LSTMState, jax.Array]:
+        """Applies the RNN for a single step (n_active = thinking-depth budget; None = full)."""
         embedded = self._compress_input(observations)
-        out_carry, pre_mlp = self._apply_cells(carry, embedded, episode_starts)
+        out_carry, pre_mlp = self._apply_cells(carry, embedded, episode_starts, n_active)
         if self.cfg.skip_final:
             pre_mlp = pre_mlp + embedded
         return out_carry, self._mlp(pre_mlp)
 
-    def scan(self, carry: LSTMState, observations: jax.Array, episode_starts: jax.Array) -> tuple[LSTMState, jax.Array]:
-        """Applies the RNN over many time steps."""
-        embedded = jax.vmap(self._compress_input)(observations)
-        apply_cells_fn = nn.scan(self.__class__._apply_cells, variable_broadcast="params", split_rngs={"params": False})
-        out_carry, pre_mlp = apply_cells_fn(self, carry, embedded, episode_starts)
+    def scan(
+        self, carry: LSTMState, observations: jax.Array, episode_starts: jax.Array, n_active=None
+    ) -> tuple[LSTMState, jax.Array]:
+        """Applies the RNN over many time steps (n_active = per-rollout thinking-depth budget; None = full)."""
+        embedded = jax.vmap(self._compress_input)(observations)  # (T, B, ...)
+
+        if n_active is None or jnp.asarray(n_active).ndim == 0:
+            # constant depth across time (None -> full); captured as a scan constant
+            def step_fn(mod, carry, emb, eps):
+                return mod._apply_cells(carry, emb, eps, n_active)
+
+            apply_cells_fn = nn.scan(step_fn, variable_broadcast="params", split_rngs={"params": False})
+            out_carry, pre_mlp = apply_cells_fn(self, carry, embedded, episode_starts)
+        else:
+            # per-timestep depth: n_active shape (T,) or (T, B); scan it alongside the inputs
+            def step_fn(mod, carry, emb, eps, na_t):
+                return mod._apply_cells(carry, emb, eps, na_t)
+
+            apply_cells_fn = nn.scan(step_fn, variable_broadcast="params", split_rngs={"params": False})
+            out_carry, pre_mlp = apply_cells_fn(self, carry, embedded, episode_starts, jnp.asarray(n_active))
         if self.cfg.skip_final:
             pre_mlp = pre_mlp + embedded
         out = jax.vmap(self._mlp)(pre_mlp)

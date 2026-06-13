@@ -42,6 +42,7 @@ import jax
 import jax.numpy as jnp
 
 from cleanba.convlstm import BaseLSTM, BaseLSTMConfig, ConvConfig, LSTMCellState, LSTMState
+from cleanba.entmax import normalize as normalize_attn
 
 
 # --------------------------------------------------------------------------------------------------
@@ -105,6 +106,15 @@ class AttentionCellConfig:
     readout: Literal["softmax", "maxplus"] = "maxplus"  # soft Bellman max-plus (VIN-like, default) vs convex average
     maxplus_beta_init: float = 1.0              # maxplus only: initial inverse temp (higher = closer to hard max)
     maxplus_beta_max: float = 10.0             # maxplus only: cap on the (learnable) inverse temp, for numerical stability
+
+    # --- attention weight normalizer (readout="softmax" only): logits -> attention weights ---
+    # "softmax" (dense: every key gets > 0 weight) | "entmax15" (alpha=1.5) | "sparsemax" (alpha=2).
+    # The entmax/sparsemax variants are SPARSE -- they assign EXACT-zero weight to low-scoring keys, so
+    # a dense (unmasked) attention layer learns its OWN hard sparse support (a learned neighbour graph)
+    # with no auxiliary loss and no coefficient to tune. This is the architectural-sparsity lever for
+    # making planning emerge (vs a soft entropy penalty). Ignored for readout="maxplus" (a different,
+    # un-normalized aggregator). Refs: Peters et al. 2019 (entmax); Martins & Astudillo 2016 (sparsemax).
+    attn_norm: Literal["softmax", "entmax15", "sparsemax"] = "softmax"
 
     # --- direction-specific value routing (VIN/conv-aligned) ---
     # When True, each relative offset gets its OWN value projection W_v^offset (instead of one shared
@@ -268,7 +278,7 @@ class AttentionCell(nn.RNNCellBase):
             Kvalid = valid.sum(-1)                                                          # (B,H,W)
 
             if self.cfg.readout == "softmax":
-                w = jax.nn.softmax(L, axis=-1)                      # (B,H,W,nh,Onb)
+                w = normalize_attn(self.cfg.attn_norm, L, axis=-1)  # (B,H,W,nh,Onb); sparse if entmax/sparsemax
                 attn = (w[..., None, :] * V).sum(-1)                # (B,H,W,nh,dh)
             elif self.cfg.readout == "maxplus":
                 bm = self.cfg.maxplus_beta_max
@@ -339,7 +349,16 @@ class AttentionCell(nn.RNNCellBase):
 
         # --- aggregate neighbour values: softmax convex average, or soft Bellman max-plus ---
         if self.cfg.readout == "softmax":
-            attn = nn.dot_product_attention(q, k, v, bias=bias)    # (B, S, nh, dh), softmax over kv axis
+            if self.cfg.attn_norm == "softmax":
+                attn = nn.dot_product_attention(q, k, v, bias=bias)    # (B, S, nh, dh), softmax over kv axis
+            else:
+                # Explicit attention so we can swap in a SPARSE normalizer (entmax/sparsemax): the cell
+                # places EXACT-zero weight on low-scoring keys -> a learned sparse support (its own
+                # neighbour graph). Mathematically identical to dot_product_attention when
+                # attn_norm="softmax", which is why that branch is kept above byte-for-byte.
+                logits = jnp.einsum("bshd,bkhd->bhsk", q, k) * (dh**-0.5) + bias  # (B, nh, S, Kn)
+                w = normalize_attn(self.cfg.attn_norm, logits, axis=-1)           # sparse over Kn
+                attn = jnp.einsum("bhsk,bkhd->bshd", w, v)                        # (B, S, nh, dh)
         elif self.cfg.readout == "maxplus":
             # out_s(d) = mellowmax_{k in N(s)} [ L_{s,k} + v_{k,d} ]
             #          = (1/beta) * ( logsumexp_k  beta*(L_{s,k} + v_{k,d})  -  log K ),

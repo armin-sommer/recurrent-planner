@@ -131,6 +131,7 @@ class Policy(nn.Module):
         key: jax.Array,
         *,
         temperature: float = 1.0,
+        n_active=None,
     ) -> tuple[PolicyCarryT, jax.Array, jax.Array, jax.Array]:
         assert len(obs.shape) == 4
         assert len(episode_starts.shape) == 1
@@ -140,7 +141,7 @@ class Policy(nn.Module):
         if tree_is_empty(carry):
             hidden = self.network_params(obs)
         else:
-            carry, hidden = self.network_params.step(carry, obs, episode_starts)
+            carry, hidden = self.network_params.step(carry, obs, episode_starts, n_active)
         logits, _ = self.actor_params(hidden)
         assert isinstance(logits, jax.Array)
 
@@ -159,6 +160,7 @@ class Policy(nn.Module):
         carry: PolicyCarryT,
         obs: jax.Array,
         episode_starts: jax.Array,
+        n_active=None,
     ) -> tuple[PolicyCarryT, jax.Array, jax.Array, dict[str, jax.Array]]:
         assert len(obs.shape) == 5
         assert len(episode_starts.shape) == 2
@@ -168,7 +170,7 @@ class Policy(nn.Module):
         if tree_is_empty(carry):
             hidden = jax.vmap(self.network_params)(obs)
         else:
-            carry, hidden = self.network_params.scan(carry, obs, episode_starts)
+            carry, hidden = self.network_params.scan(carry, obs, episode_starts, n_active)
 
         logits, logits_metrics = self.actor_params(hidden)
         value, value_metrics = self.critic_params(hidden)
@@ -451,6 +453,10 @@ def _fan_in_for_params(params: dict[str, dict[str, Any] | jax.Array]) -> dict[st
             elif k in ("edge_logits", "global_logits"):
                 # Offset-tied / global edge-weight log-tables (cellwise core, cleanba/cellwise_lstm.py):
                 # they reweight a fixed adjacency, not a matmul weight, so same lr scale (1.0) as rel_bias.
+                out[k] = "input"
+            elif k in ("slot_mu", "slot_pos"):
+                # Slot core (cleanba/slot_lstm.py): learnable per-slot init mu and the input positional
+                # embedding -- additive embeddings, not matmul weights, so same lr scale (1.0) as inputs.
                 out[k] = "input"
             else:
                 raise ValueError(f"Unknown parameter name {k=}")

@@ -72,6 +72,10 @@ class Rollout(NamedTuple):
     r_t: jax.Array | NDArray
     episode_starts_t: jax.Array | NDArray
     truncated_t: jax.Array | NDArray
+    # Variable-thinking-depth budget used to COLLECT this rollout (one value per cycle, broadcast
+    # per-env). None for fixed-depth runs. The learner replays the recurrence at this same depth so
+    # actor and learner stay consistent. (None as a pytree leaf is skipped by jax tree ops.)
+    n_active_t: Any = None
 
 
 GetLogitsAndValueFn = Callable[
@@ -100,8 +104,12 @@ def impala_loss(
     discount_t = (~done_t) * args.gamma
     del done_t
 
+    # Replay the recurrence at the SAME thinking depth the actor used to collect this rollout. The
+    # depth is constant within a rollout cycle, so a single scalar (constant over the time-scan) is
+    # exact and avoids any time-axis off-by-one. None -> full depth (fixed-depth runs).
+    _n_active = None if minibatch.n_active_t is None else minibatch.n_active_t.reshape(-1)[0]
     _final_carry, nn_logits_from_obs, nn_value_from_obs, nn_metrics = get_logits_and_value(
-        params, jax.tree.map(lambda x: x[0], minibatch.carry_t), minibatch.obs_t, minibatch.episode_starts_t
+        params, jax.tree.map(lambda x: x[0], minibatch.carry_t), minibatch.obs_t, minibatch.episode_starts_t, _n_active
     )
     del _final_carry
 

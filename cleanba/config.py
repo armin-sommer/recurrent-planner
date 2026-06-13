@@ -5,6 +5,7 @@ from typing import List, Literal, Optional
 
 from cleanba.attn_lstm import AttentionCellConfig, AttentionLSTMConfig
 from cleanba.cellwise_lstm import CellwiseLSTMCellConfig, CellwiseLSTMConfig
+from cleanba.slot_lstm import SlotCellConfig, SlotLSTMConfig
 from cleanba.convlstm import ConvConfig, ConvLSTMCellConfig, ConvLSTMConfig
 from cleanba.environments import AtariEnv, BoxWorldConfig, EnvConfig, EnvpoolBoxobanConfig, MiniPacManConfig, random_seed
 from cleanba.evaluate import EvalConfig
@@ -53,6 +54,10 @@ class Args:
 
     # Algorithm specific arguments
     total_timesteps: int = 100_000_000  # total timesteps of the experiments
+    # Variable thinking depth. If (lo, hi), the actor samples the recurrent thinking-depth budget
+    # uniformly in {lo..hi} per rollout cycle (and the learner replays at that depth), training the
+    # recurrence to benefit from test-time thinking. None = fixed depth (= repeats_per_step).
+    variable_thinking_depth: Optional[tuple[int, int]] = None
     learning_rate: float = 0.0006  # the learning rate of the optimizer
     final_learning_rate: float = 0.0  # The learning rate at the end of training
     warmup_updates: int = 0  # linear LR warmup over this many outer updates (0 = off). Stabilizes attention.
@@ -236,6 +241,7 @@ def sokoban_drc_attn(
     directional_value: bool = True,   # ON by default: per-offset value routing (VIN/conv-aligned)
     relative_key: bool = True,        # ON by default: content x direction in the score
     attend_inputs: bool = True,       # ON by default: live obs in the attention source (DRC conv_ih analog)
+    attn_norm: Literal["softmax", "entmax15", "sparsemax"] = "softmax",  # readout="softmax" only: sparse weight normalizer
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the state-indexed masked-attention core instead of ConvLSTM.
 
@@ -263,6 +269,7 @@ def sokoban_drc_attn(
             directional_value=directional_value,  # per-offset value projection (VIN/conv-aligned routing)
             relative_key=relative_key,             # per-offset relative key (content x direction in the score)
             attend_inputs=attend_inputs,           # live obs folded into q/k/v source (DRC conv_ih analog)
+            attn_norm=attn_norm,                   # softmax | entmax15 | sparsemax (sparse = learned support)
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),
@@ -286,6 +293,107 @@ def sokoban_drc_attn_1_1(): return sokoban_drc_attn(1, 1)
 def sokoban_drc_attn_3_3_vn(): return sokoban_drc_attn(3, 3, mask_neighborhood="vonneumann")      # maxplus, von Neumann
 def sokoban_drc_attn_3_3_softmax(): return sokoban_drc_attn(3, 3, readout="softmax")              # old convex-average attention
 def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_mask=False, directional_value=False, relative_key=False)  # dense attention (no mask); directional needs the mask so it's off here
+# fmt: on
+
+
+def sokoban_drc_attn_vardepth():
+    """Spatial DENSE attention (no mask), softmax readout, ONE weight-tied cell ITERATED, trained with
+    VARIABLE thinking depth (d ~ U{0..6} sampled per rollout cycle; learner replays at that depth).
+
+    The variable depth forces the recurrence to be a monotone-improvement operator across depths, so
+    it should benefit from test-time thinking (unlike the fixed-depth dense arms, which were flat).
+    This is the substrate for the three goals: (1) binding to env states under attention, (2) a LEARNED
+    mask to reachable neighbours (does dense attention concentrate on N?), (3) emergent planning.
+    repeats_per_step=6 is the max depth K_max (the scan always runs 6 ticks; depths past d are
+    identity), so the eval can sweep thinking depth 0..6 in-distribution.
+    """
+    args = sokoban_drc_attn(1, 6, use_attention_mask=False, readout="softmax",
+                            directional_value=False, relative_key=False)
+    args.variable_thinking_depth = (0, 6)
+    args.total_timesteps = 200_000_000
+    return args
+
+
+def sokoban_drc_attn_vardepth_600m():
+    """Follow-up run: like sokoban_drc_attn_vardepth, but depth d ~ U{1..6} (ALWAYS >=1 tick -- the
+    recurrent core runs at least once every step; no pure-reactive d=0) and 600M steps. Eval/checkpoint
+    points extended to cover the full 600M so checkpoints are saved throughout for interp."""
+    args = sokoban_drc_attn(1, 6, use_attention_mask=False, readout="softmax",
+                            directional_value=False, relative_key=False)
+    args.variable_thinking_depth = (1, 6)
+    args.total_timesteps = 600_000_000
+    _bs = 256 * 20
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(30e6 / _bs) * i for i in range(1, 21)])
+    return args
+
+
+def sokoban_drc_attn_vardepth_entmax_d3():
+    """Planning core (current best guess). Two changes over `sokoban_drc_attn_vardepth`, each fixing
+    one cause our 200M post-mortem identified:
+
+      (1) SPARSE attention via 1.5-entmax (attn_norm="entmax15") on DENSE (unmasked) attention -> the
+          model learns its OWN hard sparse support (exact-zero weights = a learned neighbour graph),
+          fixing the diffuse/over-smoothed routing. No auxiliary loss, no coefficient -- the sparsity
+          is architectural (entmax), not a penalty. Replaces the reverted entropy-penalty approach.
+      (2) n_recurrent=3 (D=3, matching DRC) -> each thinking tick is a deep-enough operator to be
+          worth iterating, fixing the per-tick under-capacity suspected behind the flat thinking-curve.
+
+    Keeps the variable thinking depth d ~ U{1..6} (>=1 tick; gradients flow through all d ticks,
+    verified by tests/check_vardepth_grad.py). The planning claim still rests on the thinking-curve
+    over d (the N-loop); D=3 should unblock it and entmax should sharpen recovery-of-N to a hard mask.
+    ~3x the per-step compute of the D=1 vardepth (3 cells/tick), so expect proportionally lower SPS.
+    """
+    args = sokoban_drc_attn(3, 6, use_attention_mask=False, readout="softmax",
+                            directional_value=False, relative_key=False, attn_norm="entmax15")
+    args.variable_thinking_depth = (1, 6)
+    args.total_timesteps = 300_000_000
+    _bs = 256 * 20  # checkpoints at 2M, 5M, then every 20M to 300M (15 pts) for the thinking-curve sweep
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(20e6 / _bs) * i for i in range(1, 16)])
+    return args
+
+
+def sokoban_drc_slots(
+    n_recurrent: int = 1,
+    num_repeats: int = 3,
+    num_slots: int = 100,
+    routing_readout: Literal["softmax", "maxplus"] = "softmax",
+    num_heads: int = 4,
+) -> Args:
+    """Same setup as `sokoban_drc`, but with the LEARNABLE-SLOT relational core (cleanba.slot_lstm).
+
+    The N latent cells are *free slots* with no spatial position: the binding sigma (slot<->state) is
+    discovered by a slot-attention competition over the H*W board tokens, and the routing graph N is
+    learned by DENSE slot<->slot attention with no spatial/positional prior. This is the strongest
+    form of the paper's thesis -- the conv/attention cores hand sigma (and, masked, N) to the network
+    via the grid; this core must discover BOTH from pure RL signal. `num_slots=100` matches the 10x10
+    board for a 1:1 capacity (cleanest binding). `skip_final=False` is REQUIRED: the base would
+    otherwise add the spatial embed map to the (B,N,d) slot output (a shape error).
+    """
+    args = sokoban_drc33_59()  # inherit the PROVEN recipe (grad clip 2.5e-4, vtrace_lambda 0.5,
+    # light L2, valid_medium eval), then swap in the slot backbone below.
+    args.net = SlotLSTMConfig(
+        embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
+        recurrent=SlotCellConfig(
+            features=32,
+            num_slots=num_slots,
+            num_heads=num_heads,
+            routing_readout=routing_readout,
+        ),
+        n_recurrent=n_recurrent,
+        mlp_hiddens=(256,),
+        repeats_per_step=num_repeats,
+        skip_final=False,  # CRITICAL: (B,N,d) slot carry can't accept the base's spatial embed skip-add
+    )
+    # Lighten the DURING-training eval (same as the attn/cellwise arms): 2 ticks + sparse points.
+    args.eval_envs["valid_medium"].steps_to_think = [0, 8]
+    _bs = 256 * 20  # local_num_envs * num_steps
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(10e6 / _bs) * i for i in range(1, 21)])
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_softmax(): return sokoban_drc_slots(routing_readout="softmax")  # headline: pure-RL discovered binding + N, softmax routing
+def sokoban_drc_slots_maxplus(): return sokoban_drc_slots(routing_readout="maxplus")  # VIN-aligned soft Bellman max-plus routing variant
 # fmt: on
 
 

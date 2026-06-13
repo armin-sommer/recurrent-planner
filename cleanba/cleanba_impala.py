@@ -302,6 +302,11 @@ def _concat_and_shard_rollout_internal(
             [*(_split_over_batches(r.episode_starts_t) for r in storage), _split_over_batches(last_episode_starts)], axis=1
         ),
         truncated_t=jnp.stack([_split_over_batches(r.truncated_t) for r in storage], axis=1),
+        n_active_t=(
+            None
+            if storage[0].n_active_t is None
+            else jnp.stack([_split_over_batches(r.n_active_t) for r in storage], axis=1)
+        ),
     )
     return out
 
@@ -396,13 +401,22 @@ def rollout(
                         params, actor_policy_version = params_queue.get(timeout=args.queue_timeout)
 
             with time_and_append(log_stats.rollout_time):
+                # Variable thinking depth: sample ONE budget per rollout cycle (None => fixed/full depth).
+                # Stored per rollout so the learner replays the recurrence at the same depth.
+                if args.variable_thinking_depth is None:
+                    n_active = None
+                else:
+                    _lo, _hi = args.variable_thinking_depth
+                    n_active = int(np.random.randint(_lo, _hi + 1))
                 for _ in range(1, num_steps_with_bootstrap + 1):
                     global_step += (
                         args.local_num_envs * args.num_actor_threads * len_actor_device_ids * runtime_info.world_size
                     )
 
                     with time_and_append(log_stats.inference_time):
-                        carry_tplus1, a_t, logits_t, key = get_action_fn(params, carry_t, obs_t, episode_starts_t, key)
+                        carry_tplus1, a_t, logits_t, key = get_action_fn(
+                            params, carry_t, obs_t, episode_starts_t, key, n_active=n_active
+                        )
 
                     with time_and_append(log_stats.device2host_time):
                         cpu_action = np.array(a_t)
@@ -424,6 +438,10 @@ def rollout(
                                 r_t=r_t,
                                 episode_starts_t=episode_starts_t,
                                 truncated_t=trunc_t,
+                                n_active_t=(
+                                    None if n_active is None
+                                    else jnp.full((args.local_num_envs,), n_active, dtype=jnp.int32)
+                                ),
                             )
                         )
                         obs_t = obs_tplus1

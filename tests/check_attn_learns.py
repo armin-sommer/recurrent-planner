@@ -43,6 +43,8 @@ def build_policy(variant: str):
         sokoban_drc_attn_3_3_dir,
         sokoban_drc_attn_3_3_dir_softmax,
         sokoban_drc_3_3,
+        sokoban_drc_slots_softmax,
+        sokoban_drc_slots_maxplus,
     )
 
     spec = {
@@ -51,6 +53,8 @@ def build_policy(variant: str):
         "dir": sokoban_drc_attn_3_3_dir,                  # + per-offset value routing (maxplus)
         "dir_softmax": sokoban_drc_attn_3_3_dir_softmax,  # + per-offset value routing (softmax)
         "drc": sokoban_drc_3_3,
+        "slots": sokoban_drc_slots_softmax,               # learnable-slot core, softmax routing (headline)
+        "slots_maxplus": sokoban_drc_slots_maxplus,       # learnable-slot core, max-plus routing
     }[variant]().net
 
     class FakeEnvs:
