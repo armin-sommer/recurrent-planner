@@ -10,7 +10,7 @@
 \newcommand{\good}{\textcolor{teal}{\textbf{\checkmark}}}
 
 \title{\bf Emergent Planning in a Relational Recurrent Core\\
-\large Binding, Transition-Respecting Routing, and Value-Based Lookahead on Sokoban}
+\large Binding, Transition-Respecting Routing, and Planning by Value Propagation on Sokoban}
 \author{Recurrent-Planner project}
 \date{\today}
 
@@ -28,11 +28,17 @@ probe the trained model. We find all three legs hold: (1)~task objects (box/targ
 linearly decodable from per-cell latents; (2)~a \emph{causal} perturbation that is blocked by a wall
 influences the agent's decision $2.6\times$ less than an open one at matched pixel distance
 (partial correlation $-0.32$) --- information routes \emph{around} walls, along $\NN$, not through
-them; (3)~the thinking loop implements \emph{value-based one-step lookahead}: the policy agrees with
-$\arg\max_a[r_a+\gamma V(s'_a)]$ over its own value above chance ($0.41$ vs.\ $0.25$), and this
-consistency \emph{rises with thinking depth} ($0.34\!\to\!0.41$). The lookahead is shallow/amortized
---- no multi-step internal trajectory is represented; the long horizon lives in the value function.
-Critically, the relational structure of (1)--(2) \emph{emerges from RL with no architectural mask}.
+them; (3)~the thinking loop implements \emph{one step of generalized policy iteration}: an amortized,
+graph-respecting \textbf{policy evaluation} (goal-directed value propagation) in the loop, plus a
+one-step \textbf{lookahead improvement} at the actor head. The per-tick operator is a convex-average
+(no-$\max$) propagation whose attention is stationary and broad, so the loop is \emph{not} value
+iteration; relocating the goal reshapes the propagated latent (a $1.55\times$ shift vs.\ a matched
+transition change), so it is \emph{not} a reward-agnostic successor representation either --- it
+evaluates a goal-directed value field whose converged form is a recursive Bellman fixed point. The
+policy then agrees with $\arg\max_a[r_a+\gamma V(s'_a)]$ over its own value above chance ($0.41$ vs.\
+$0.25$), rising with thinking depth ($0.34\!\to\!0.41$); the horizon is amortized (no multi-step
+internal trajectory is stored). Critically, the relational structure of (1)--(2) \emph{emerges from RL
+with no architectural mask}.
 \end{abstract}
 
 \section{Setup}
@@ -154,7 +160,108 @@ distance-independent ($\approx 2$ ticks): information arrives fast/globally, but
 arrives is gated by graph connectivity. The routing is thus fast (parallel-like) yet
 transition-respecting in magnitude.
 
-\section{Step 3: Planning emerges as value-based lookahead \good}
+\section{Step 3: Planning as two-step policy iteration \good}
+
+The thinking loop realizes \emph{one step of generalized policy iteration, split across the
+architecture}: (3a)~the recurrent loop performs amortized, graph-respecting \textbf{policy evaluation}
+(goal-directed value propagation along $\NN$), and (3b)~the actor head performs a one-step
+\textbf{lookahead policy improvement}. The loop is \emph{not} value iteration and \emph{not}
+successor-representation construction; we pin each below.
+
+\subsection*{(3a) The loop evaluates: goal-directed value propagation}
+
+\paragraph{One tick is a damped propagation, not a Bellman max.} The trained core uses
+\texttt{readout="softmax"}, \texttt{attn\_norm="entmax15"}, \texttt{directional\_value=False}: the
+per-tick aggregation $z=(A\,v)\,W_{\!out}$ is a \emph{convex average} $\mathbb{E}_{s'\sim A}[\cdot]$,
+\emph{not} a $\max$ (the codebase's soft-Bellman \texttt{maxplus} operator is off for this checkpoint).
+Linearizing the value channel, one weight-tied tick and its fixed point are
+\begin{equation}
+  c \;\leftarrow\; \gamma_{\text{eff}}\,A\,c + r_{\text{eff}}
+  \qquad\Longrightarrow\qquad
+  c^\star=(I-\gamma_{\text{eff}}A)^{-1}r_{\text{eff}}=\textstyle\sum_{i\ge0}(\gamma_{\text{eff}}A)^i r_{\text{eff}},
+  \label{eq:resolvent}
+\end{equation}
+the discounted \textbf{policy-evaluation resolvent} (equivalently the successor-representation kernel):
+$A\leftrightarrow\gamma P^\pi$ (the entmax routing on $\NN$), the per-channel forget gate
+$\sigma(g_f)\leftrightarrow$ the discount, and the $[x;\text{prev}]W_{\!in}$ injection
+$\leftrightarrow$ the reward source $r$. No $\max_a$ appears in the loop.
+
+\paragraph{The attention operator is stationary (E1).} Value iteration would sharpen $A$ toward the
+greedy successor as the estimate improves. It does not: across ticks $A$ stays broad and stationary
+(Table~\ref{tab:e1}), consistent with a \emph{fixed} transition operator $\gamma P^\pi$ rather than a
+sharpening optimality backup.
+
+\paragraph{Policy evaluation, not a successor representation (E2).} The two members of
+Eq.~\eqref{eq:resolvent} differ in \emph{where reward enters}: policy-evaluation bakes the goal into
+the iterate $c^\star$; a successor representation stores reward-agnostic occupancy and injects reward
+only at the critic. We relocate the target to a far floor cell (move the reward, keep $P$) and measure
+the recurrent latent shift outside the conv receptive field, against a matched far wall-flip (change
+$P$, keep reward). Moving the goal shifts the propagated latent $h_2$ \emph{more} than a transition
+change does (Table~\ref{tab:e2}: far-field ratio $1.55$, agent-cell $1.34$), with a large readout-value
+shift. A successor representation predicts a $\approx0$ far-field shift; this falsifies it.
+
+\paragraph{Genuine but amortized iteration.} The hidden contracts geometrically at $\rho\approx0.89$
+(effective horizon $\sim$9 ticks) and is only $\sim$60\% converged at the trained $K{=}6$: the loop does
+real inference-time iteration, but its effective horizon is far shorter than the task's $\gamma{=}0.97$
+horizon, so the long-range solution is \emph{amortized} into the weights and the loop runs a few
+refinement sweeps. The propagation is moreover \emph{parallel}: $A$ is broad ($\sim$85/100 keys) and (\S2)
+a perturbation's influence onset is roughly distance-independent ($\sim$2--3 ticks) with graph-gated
+\emph{magnitude} --- a parallel graph-weighted spread, not a serial one-ring-per-tick wavefront.
+
+\paragraph{The converged value is a recursive Bellman fixed point.} Along the greedy trajectory the
+optimality residual $|V(s_k)-\max_a[r_a+\gamma V(s'_{k,a})]|$ is low and \emph{flat} across depth
+(Table~\ref{tab:bellman}), with a small constant \emph{negative} (soft/entropy-regularized) gap: $V$
+approximately satisfies the recursive Bellman equation everywhere. This characterizes the
+\emph{converged value} (depth-agnostic); it does not by itself identify the per-tick operator --- E1/E2 do.
+
+\begin{table}[h]\centering
+\caption{E1 (300M): the per-tick operator is stationary and broad and contracts slowly --- not a
+sharpening Bellman backup. Ticks $1\!\to\!12$ (trained $K{=}6$).}
+\label{tab:e1}
+\begin{tabular}{lcc}
+\toprule
+quantity & tick 1 & tick 12 \\
+\midrule
+attention top-1 mass / query        & 0.156 & 0.159 \\
+entmax support (\#keys $>10^{-6}$)  & 87 & 85 \\
+operator drift $\cos(A_t,A_{t-1})$  & 0.95 & 0.995 \\
+relative update $\lVert\Delta h_t\rVert/\lVert h_t\rVert$ & 0.48 & 0.10 \\
+\bottomrule
+\end{tabular}\\[3pt]
+{\footnotesize Contraction $\rho\approx0.89$ (effective horizon $\sim$9 ticks); $\sim$60\% converged at $K{=}6$.}
+\end{table}
+
+\begin{table}[h]\centering
+\caption{E2 (300M; 230 verified relabels): relocating the goal moves the propagated latent \emph{more}
+than a matched transition change --- the goal is in the iterate (policy-evaluation), not a
+reward-agnostic successor representation (which predicts $\approx0$).}
+\label{tab:e2}
+\begin{tabular}{lccc}
+\toprule
+relative latent shift $\lVert\Delta h_2\rVert/\lVert h_2\rVert$ & reward-move & wall-flip & ratio \\
+\midrule
+far field (outside conv RF of both edits) & 0.349 & 0.225 & 1.55 \\
+agent cell (clean of both edits)          & 0.273 & 0.204 & 1.34 \\
+\midrule
+readout value shift $|\Delta V|/\mathrm{std}(V)$ & 0.84 & 0.45 & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]\centering
+\caption{Bellman self-consistency (300M): optimality residual (normalized by $\mathrm{std}(V)$) along the
+greedy trajectory --- low and flat $\Rightarrow$ a recursive (multi-step) fixed point.}
+\label{tab:bellman}
+\begin{tabular}{lcccc}
+\toprule
+depth $k$ & 0 & 1 & 2 & 3 \\
+\midrule
+$|V-\max_a(r+\gamma V(s'))|/\mathrm{std}(V)$ & 0.19 & 0.25 & 0.25 & 0.22 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{(3b) The head improves: one-step lookahead}
 
 \paragraph{Lookahead consistency (the decisive test).} Planning means evaluating actions at the
 states they transition into. For each board we step into each action's successor $s'_a$, read the
@@ -180,7 +287,7 @@ agreement with $\arg\max_a[r_a+\gamma V(s'_a)]$ & 0.41 & 0.34 & 0.38 & 0.39 & 0.
 \end{tabular}
 \end{table}
 
-\paragraph{The lookahead is shallow/amortized.} Decoding the model's \emph{executed} future actions
+\paragraph{No stored multi-step trajectory.} Decoding the model's \emph{executed} future actions
 from the policy readout, only the immediate action $a_0$ is represented (and it sharpens over ticks,
 $0.70\!\to\!0.97$); the future plan $a_1,\dots,a_5$ sits at chance. So there is \emph{no multi-step
 internal trajectory} being built or optimized --- the long horizon is amortized into the value
@@ -213,11 +320,14 @@ graph-aware computation).
 Model-free RL on a relational recurrent core yields, \emph{with no imposed locality mask}:
 \textbf{(1)}~latent cells that bind to environment states; \textbf{(2)}~content-based routing whose
 information flow respects the transition graph $\NN$ (causally: it routes around walls); and
-\textbf{(3)}~a thinking loop that implements value-based one-step lookahead, refined with depth. The
-structure of (1)--(2) is \emph{emergent}, which is the central claim --- masking the attention would
-hard-code $\NN$ and make the result circular. The planning (3) is genuine but \emph{shallow and
-amortized}: one-step lookahead over a learned value, not deep multi-step search or trajectory
-optimization. Inducing deeper, explicitly multi-step planning (e.g.\ via depth curricula or
-convergence-promoting ``deep-thinking'' objectives) is the natural next direction.
+\textbf{(3)}~a thinking loop that realizes one step of generalized policy iteration --- amortized,
+graph-respecting \emph{policy evaluation} (goal-directed value propagation) in the loop, and a one-step
+\emph{lookahead improvement} at the actor head. The structure of (1)--(2) is \emph{emergent}, which is
+the central claim --- masking the attention would hard-code $\NN$ and make the result circular. The
+planning (3) is genuine but \emph{shallow and amortized}: the loop propagates a goal-directed value
+field through a fixed, broad transition operator (a few parallel refinement sweeps; effective horizon
+$\sim$9 ticks), \emph{not} deep multi-step search, trajectory optimization, or value iteration. Inducing
+deeper, explicitly multi-step planning (e.g.\ via depth curricula or convergence-promoting
+``deep-thinking'' objectives) is the natural next direction.
 
 \end{document}
