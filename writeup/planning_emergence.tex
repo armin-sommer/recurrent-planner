@@ -1,0 +1,223 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage[hidelinks]{hyperref}
+\usepackage{xcolor}
+\usepackage{enumitem}
+
+\newcommand{\NN}{\mathcal{N}}
+\newcommand{\good}{\textcolor{teal}{\textbf{\checkmark}}}
+
+\title{\bf Emergent Planning in a Relational Recurrent Core\\
+\large Binding, Transition-Respecting Routing, and Value-Based Lookahead on Sokoban}
+\author{Recurrent-Planner project}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We test whether model-free RL on a \emph{state-indexed relational recurrent core} induces planning,
+decomposed into a three-step chain: (1)~latent cells \textbf{bind} to environment states;
+(2)~the learned content-based routing \textbf{respects the environment's transition graph} $\NN$;
+and (3)~\textbf{planning emerges} over the latent states through the recurrent ``thinking'' loop.
+We train an attention-LSTM core (dense attention with a sparse \mbox{1.5-entmax} normalizer, depth
+$D{=}3$, variable thinking depth $d\sim\mathcal{U}\{1..6\}$) on Sokoban for 300M IMPALA steps and
+probe the trained model. We find all three legs hold: (1)~task objects (box/target/agent/wall) are
+linearly decodable from per-cell latents; (2)~a \emph{causal} perturbation that is blocked by a wall
+influences the agent's decision $2.6\times$ less than an open one at matched pixel distance
+(partial correlation $-0.32$) --- information routes \emph{around} walls, along $\NN$, not through
+them; (3)~the thinking loop implements \emph{value-based one-step lookahead}: the policy agrees with
+$\arg\max_a[r_a+\gamma V(s'_a)]$ over its own value above chance ($0.41$ vs.\ $0.25$), and this
+consistency \emph{rises with thinking depth} ($0.34\!\to\!0.41$). The lookahead is shallow/amortized
+--- no multi-step internal trajectory is represented; the long horizon lives in the value function.
+Critically, the relational structure of (1)--(2) \emph{emerges from RL with no architectural mask}.
+\end{abstract}
+
+\section{Setup}
+
+\paragraph{Core.} The recurrent backbone is a state-indexed attention-LSTM: each latent cell is the
+$C{=}32$-channel vector at a spatial board square $s$ (NHWC carry over $S{=}H{\times}W$ tokens). Per
+``thinking tick'' every cell updates by attending over the board (4 heads), aggregating neighbour
+values, and applying an LSTM gate. We use \textbf{dense} attention (no locality mask) with a
+\textbf{sparse 1.5-entmax} normalizer, depth $D{=}3$ stacked cells (\texttt{n\_recurrent}), and up to
+$K{=}6$ ticks. The map to the relational-update formalism is
+$h^{k+1}(s')=\mathrm{AGG}_{(s,s')}\,F_\phi(h^k(s))$, with $\NN$ the attention support, $F_\phi$ the
+value projection, and the gate the LSTM update.
+
+\paragraph{Three training requirements.} The investigation rests on three mechanisms, all verified:
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+  \item \textbf{Random thinking depth.} A depth $d\sim\mathcal{U}\{1..6\}$ is sampled per rollout; the
+        learner replays the recurrence at the same $d$ (V-trace consistency).
+  \item \textbf{$k$-step recurrent backprop.} A gated scan runs the static $K$ ticks but freezes the
+        carry past $d$, so gradients flow through exactly $d$ weight-tied applications. Verified
+        \emph{bit-exact}: $\nabla(\text{gated }d) = \nabla(\text{native $d$-tick model})$ to $0.0$,
+        and the recurrent-cell gradient is exactly $0$ at $d{=}0$ and grows monotonically with $d$.
+  \item \textbf{Sparsity via entmax (architectural).} Attention weights are 1.5-entmax (true zeros),
+        not a soft entropy penalty --- one module, no loss term, no scan plumbing.
+\end{enumerate}
+
+\paragraph{Training outcome.} On unfiltered-train Sokoban (IMPALA, 300M steps) the model learns
+cleanly: online train solve rate $\approx\!83\%$, episode length $76\!\to\!40$, value
+$\text{var\_explained}\approx0.99$, policy entropy $1.37\!\to\!0.29$. On \texttt{valid\_medium}
+(generalization) the greedy full-depth solve rate is $\approx\!31\%$. A faithful sweep of the trained
+thinking depth $d$ (Table~\ref{tab:think}) shows solve rate \emph{rises} with thinking, confirming the
+loop does useful computation.
+
+\begin{table}[h]\centering
+\caption{Thinking-curve: \texttt{valid\_medium} solve rate vs.\ inner thinking depth $d$ (faithful
+$n_{\text{active}}$ sweep; whole episode run at depth $d$). Thinking helps; mild interior peak at $d{=}4$.}
+\label{tab:think}
+\begin{tabular}{lccccccc}
+\toprule
+depth $d$ & 0 & 1 & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+solve (160M ckpt) & 0.000 & 0.258 & 0.314 & 0.325 & \textbf{0.336} & 0.329 & 0.319 \\
+solve (140M ckpt) & 0.000 & 0.223 & 0.288 & 0.310 & 0.316 & --- & 0.319 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Step 1: Latent states bind to environment states \good}
+
+We linearly decode the tile type at square $s$ from its latent $h(s)$ (per-object balanced accuracy,
+chance $=0.5$). All task-relevant objects are decodable well above chance, including the rare ones
+(box/target/agent are $1$--$4\%$ of squares). Binding is established immediately (flat over ticks),
+consistent with it being read from the input embedding rather than constructed by the loop.
+
+\begin{table}[h]\centering
+\caption{Per-object binding: balanced accuracy of a linear probe $h(s)\to$ is-object (chance $0.5$).}
+\label{tab:bind}
+\begin{tabular}{lcccc}
+\toprule
+object & wall & box & target & agent \\
+base rate & 0.69 & 0.04 & 0.04 & 0.01 \\
+\midrule
+balanced acc & 0.76--0.78 & 0.76 & 0.70 & 0.74--0.76 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent\emph{(Note: an earlier floor-dominated 5-way aggregate probe sat at chance and was
+uninformative; the per-object balanced probe is the correct measurement.)}
+
+\section{Step 2: Routing respects the transition graph $\NN$ \good}
+
+\paragraph{Recovery of $\NN$ (correlational).} With no locality mask, the attention nonetheless
+concentrates its \emph{mass} on the one-step move-reachable (wall-masked) neighbours far above chance
+(Table~\ref{tab:recoverN}): $7$--$13\times$, vs.\ $3.1\times$ for the earlier dense-softmax core. The
+entmax support is broad ($\sim$44--88 nonzero keys), so this is mass-concentration with a long tail,
+not hard sparsity.
+
+\begin{table}[h]\centering
+\caption{Recovery of $\NN$: attention mass on wall-masked one-step neighbours vs.\ uniform chance
+($0.027$), per stacked cell (final tick, 160M).}
+\label{tab:recoverN}
+\begin{tabular}{lccc}
+\toprule
+ & cell 0 & cell 1 & cell 2 \\
+\midrule
+mass on reachable & 0.351 & 0.320 & 0.189 \\
+lift over chance & $13.0\times$ & $11.8\times$ & $7.0\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Through-walls (causal).} Mass-on-$\NN$ alone does not prove the \emph{computation} respects
+transitions --- a global tail could carry information through walls. We test it causally: flip one
+floor cell to a wall at Euclidean distance $\in[3.5,7]$ from the agent (beyond the conv receptive
+field, so the agent's embedding is unaffected) and measure the agent-cell latent shift, comparing
+cells \emph{blocked} by walls (graph $\gg$ Euclidean / unreachable) vs.\ \emph{open} ones at matched
+pixel distance (Table~\ref{tab:walls}). A perturbation behind a wall moves the agent's latent only
+$0.38\times$ as much (partial correlation of influence with graph-distance, controlling Euclidean,
+$=-0.32$). \textbf{Information routes around walls, along $\NN$, not through Euclidean space.}
+
+\begin{table}[h]\centering
+\caption{Through-walls causal test (300M; matched Euclidean distance $\approx4.5$). Influence $=$
+final agent-cell $\lVert\Delta h\rVert$ from the perturbation.}
+\label{tab:walls}
+\begin{tabular}{lccc}
+\toprule
+ & influence $\lVert\Delta h\rVert$ & onset (tick) & Euclidean dist. \\
+\midrule
+open (navigable path) & 0.857 & 2.29 & 3.9--4.6 \\
+blocked by wall       & 0.323 & 1.73 & 4.5--5.4 \\
+\midrule
+\multicolumn{4}{l}{blocked/open ratio $=0.38$; \quad partial corr$(\,\text{infl},\text{graph}\mid\text{Euclid})=-0.32$} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent A separate perturbation sweep shows the influence \emph{onset} (timing) is roughly
+distance-independent ($\approx 2$ ticks): information arrives fast/globally, but \emph{how much}
+arrives is gated by graph connectivity. The routing is thus fast (parallel-like) yet
+transition-respecting in magnitude.
+
+\section{Step 3: Planning emerges as value-based lookahead \good}
+
+\paragraph{Lookahead consistency (the decisive test).} Planning means evaluating actions at the
+states they transition into. For each board we step into each action's successor $s'_a$, read the
+model's \emph{own} value $V(s'_a)$, and ask whether the chosen action equals the one-step lookahead
+$a^\star \stackrel{?}{=} \arg\max_a\,[\,r_a+\gamma V(s'_a)\,]$. The policy is consistent with this
+lookahead well above chance, and --- crucially --- \textbf{consistency rises with thinking depth}
+(Table~\ref{tab:lookahead}): extra ticks move the action toward the value-maximizing successor
+($13.7\%$ of boards have their action flipped to the lookahead choice by the loop). This is the
+mechanistic correlate of the rising thinking-curve.
+
+\begin{table}[h]\centering
+\caption{Lookahead consistency (300M): agreement of the policy with one-step lookahead over its own
+value. Chance $=1/n_{\text{act}}=0.25$.}
+\label{tab:lookahead}
+\begin{tabular}{lccccccc}
+\toprule
+ & full & \multicolumn{6}{c}{by thinking depth $d$}\\
+\cmidrule(l){3-8}
+ & depth & $d{=}1$ & 2 & 3 & 4 & 5 & 6 \\
+\midrule
+agreement with $\arg\max_a[r_a+\gamma V(s'_a)]$ & 0.41 & 0.34 & 0.38 & 0.39 & 0.38 & 0.42 & 0.41 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{The lookahead is shallow/amortized.} Decoding the model's \emph{executed} future actions
+from the policy readout, only the immediate action $a_0$ is represented (and it sharpens over ticks,
+$0.70\!\to\!0.97$); the future plan $a_1,\dots,a_5$ sits at chance. So there is \emph{no multi-step
+internal trajectory} being built or optimized --- the long horizon is amortized into the value
+function, and the loop refines a one-step, value-based decision (a policy-improvement primitive),
+not a multi-step forward search.
+
+\section{Methodology and caveats}
+
+\paragraph{Faithful recompute.} Because the model's own forward (the offset-tied \texttt{rel\_bias}
+gather under \texttt{nn.scan}) triggers a tracer error when traced/jitted, all probes recompute the
+$D{=}3$ entmax stack in plain JAX from the loaded parameters and read out logits/value with the
+trained head matmuls. The recompute is validated to reproduce the model's own final hidden state to
+$1.8\times10^{-7}$.
+
+\paragraph{Corrected probes.} Two early measurements were methodologically wrong and were corrected;
+we report this for transparency. (i)~A flat $0$-vs-$8$ ``steps-to-think'' eval was \emph{not} the
+thinking axis --- the faithful $n_{\text{active}}$ sweep (Table~\ref{tab:think}) is. (ii)~Decoding the
+future plan from the \emph{initial} state's representation cannot detect planning, because future
+actions are taken at future states; the successor-value lookahead test (Table~\ref{tab:lookahead}) is
+the correct test, and it flips the conclusion from ``reactive'' to ``value-based lookahead.''
+
+\paragraph{Limits.} Probes are linear (a nonlinear probe might recover more structure); the causal
+tests are on the final checkpoint (an emergence-over-training sweep is the natural next figure);
+lookahead is measured at one step (the value amortizes deeper horizons); ``respects walls'' has a
+mild confound (walled cells may be intrinsically less plan-relevant, though that is itself
+graph-aware computation).
+
+\section{Conclusion}
+
+Model-free RL on a relational recurrent core yields, \emph{with no imposed locality mask}:
+\textbf{(1)}~latent cells that bind to environment states; \textbf{(2)}~content-based routing whose
+information flow respects the transition graph $\NN$ (causally: it routes around walls); and
+\textbf{(3)}~a thinking loop that implements value-based one-step lookahead, refined with depth. The
+structure of (1)--(2) is \emph{emergent}, which is the central claim --- masking the attention would
+hard-code $\NN$ and make the result circular. The planning (3) is genuine but \emph{shallow and
+amortized}: one-step lookahead over a learned value, not deep multi-step search or trajectory
+optimization. Inducing deeper, explicitly multi-step planning (e.g.\ via depth curricula or
+convergence-promoting ``deep-thinking'' objectives) is the natural next direction.
+
+\end{document}

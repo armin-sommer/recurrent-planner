@@ -1,269 +1,167 @@
 # AGENT HANDOFF — recurrent-planner
 
-_Single source of truth for resuming. Rewritten 2026-06-13. Read top to bottom. Supersedes the
-auto-loaded `~/.claude/.../memory/` notes where they conflict (old RunPod IPs are dead — see §7)._
+_Single source of truth. Rewritten 2026-06-15. Read top to bottom._
 
 ---
 
-## 0. TL;DR / CURRENT STATE
+## 0. THESIS (the only thing that matters)
 
-> **UPDATE 2026-06-13 (session: entmax + D=3).** The §0 bullets below about "RUNNING NOW: the 600M"
-> and the "sparsity TODO / path-B entropy penalty" are SUPERSEDED — read this block first:
-> - **Sparsity is DONE, architecturally, via α-entmax — NOT the entropy penalty.** New module
->   `cleanba/entmax.py` (sparsemax α=2 + 1.5-entmax, closed-form `custom_vjp`, FD-verified). New cell
->   flag `AttentionCellConfig.attn_norm ∈ {softmax,entmax15,sparsemax}` routes BOTH softmax sites; the
->   `softmax` path is byte-identical (regression-checked) so every other config is unchanged. The
->   reverted sow/nested-scan entropy penalty (old §2) is ABANDONED — entmax needs no loss term, no
->   scan plumbing (sidesteps that bug entirely), and gives EXACT-zero weights = a learned sparse
->   support. Dead `attn_entropy_coef` removed from `impala_loss.py`.
-> - **The 600M D=1 run was KILLED** at ~36.5M/600M to free the GPU (its 30M ckpt remains at
->   `/workspace/runs/vardepth600/…`). Superseded by the run below.
-> - **RUNNING NOW: `sokoban_drc_attn_vardepth_entmax_d3`** — dense attn + **entmax15** (learns its own
->   hard sparse support) + **n_recurrent=3** (D=3; the suspected fix for the flat thinking-curve) +
->   variable depth d∼U{1..6}, **300M** steps. `tmux vd_d3_entmax`, run dir
->   `/workspace/runs/vd_d3_entmax`, log `/workspace/logs/vd_d3_entmax.log`. Confirmed stepping, 0
->   errors; steady SPS ~2.7–2.9k (D=3 ≈ 3× D=1), ETA ~30h. Checkpoints at 2/5/20/40…300M.
->   **Monitor:** `grep 'update=' /workspace/logs/vd_d3_entmax.log | tail` (returns should rise from
->   ~−7, ep-length fall).
-> - **Gradient-through-every-tick (#2) is PROVEN bit-exact** — `tests/check_vardepth_grad.py`: cell-grad
->   == 0 at d=0, grows with d, and gated(n_active=d) grad == native d-tick grad to 0.0 (no leakage).
->   `tests/check_entmax.py` validates the normalizers (sum-to-1, true zeros, grad == finite-diff ~1e-10).
-> - **NEXT:** when checkpoints land, run the interp (§5): does the thinking-curve now rise past d=1
->   (D=3 working)? does the entmax support land on 𝒩 as a HARD sparse mask (sharper than the soft
->   3.1×)? Compare against the 200M D=1 softmax vardepth.
+Model-free RL on a **relational recurrent core** induces planning, demonstrated as a three-step chain
+on Sokoban — and the structure must **emerge from RL**, not be architecturally imposed:
 
-- **Paper thesis:** model-free RL on a *relational recurrent core* induces planning when (i) latent
-  cells **bind** to environment states and (ii) the content-based routing recovers the transition
-  graph 𝒩. Then the "thinking" loop = K-step policy improvement. (`paper` draft, abstract.)
-- **This session built** three things on top of the prior attn/cellwise cores: (a) a **free-slot
-  core** (`slot_lstm.py`) — attention between non-spatial latent slots; (b) **variable-thinking-depth
-  training** (gate the recurrence to a sampled depth d per rollout) — validated + trained; (c) an
-  **attention-sparsity entropy penalty** (§2) — fully wired + validated in isolation, but **reverted**
-  before the long run after a node smoke test caught a nested-scan bug (see §0 status + §2). So the
-  slot core + variable-depth are trained; **sparsity is the one open TODO.**
-- **Headline results (§3):**
-  - **Spatial dense attention LEARNS 𝒩** (the abstract's central novel claim): the unmasked
-    square×square attention concentrates **3.1× over chance** on grid-neighbours + the learned
-    positional bias up-weights the neighbour ring. The **free-slot core does NOT** (1.03×, diffuse) —
-    it's the spatial structure that enables recovery-of-𝒩; the free-slot run is the negative control.
-  - **But recovering 𝒩 ≠ strong planning here.** The variable-depth dense model is a weak solver
-    (28% train / ~1% valid) and its thinking-curve is **flat beyond d=1** (only the d=0→1 jump
-    matters — running the core at all). Most likely cause: `n_recurrent=1` (single layer, too little
-    capacity to *use* the recovered graph).
-- **RUNNING NOW: the plain 600M (no sparsity yet).** `sokoban_drc_attn_vardepth_600m` launched on the
-  H200 at 06:53Z — `tmux vd600`, run dir `/workspace/runs/vardepth600`, log
-  `/workspace/logs/vardepth600.log`. Spatial dense attn, `n_recurrent=1`, `K_max=6`, softmax,
-  **variable depth d∈{1..6}** (always ≥1 tick), 600M steps, checkpoints every 30M (~18h).
-  **FIRST THING NEXT SESSION: confirm it's still stepping** —
-  `grep 'update=' /workspace/logs/vardepth600.log | tail` (expect SPS≈9k, returns rising, ep-length
-  falling). It is byte-for-byte the code that ran the 200M vardepth, so it should be healthy — but it
-  was launched right at the end of the session and **was not yet confirmed stepping**, so verify.
-- **⚠️ SPARSITY IS NOT IN THIS RUN — it hit a bug and was reverted.** The user wanted an attention
-  entropy-sparsity penalty (§2). It was fully wired and validated in isolation (micro-test + local
-  forward + gradient), but the **node smoke test caught a real bug**:
-  `scan got values with different leading axis sizes: 1, 6, 6` in `_apply_cells`'s inner tick-scan.
-  Root cause: the sow-extraction mechanism `variable_axes={'aux':0}` **does not compose across the
-  NESTED scans** (inner ticks × outer time) — it validated in a single scan but not nested. Rather
-  than risk an 18h run on buggy code, I **reverted all 4 wiring files** (`cleanba_impala.py`,
-  `impala_loss.py`, `convlstm.py`, `attn_lstm.py`) to the known-working state and launched the plain
-  600M above. The only vestige left (harmless, dormant): `ImpalaLossConfig.attn_entropy_coef`
-  (default 0) + `config.py` line setting it to 0.01 — `impala_loss` no longer reads it.
-- **TO ADD SPARSITY (the open TODO — path B):** re-apply §2's 5 pieces but make the sow survive the
-  nested scans. The pieces that were CORRECT (reuse them): explicit-softmax to expose the weights;
-  `if self.is_mutable_collection('aux'): self.sow('aux','attn_entropy', mean H)` so only the learner
-  sows; `mutable=['aux']` on the learner's `get_logits_and_value` partial; the loss unpack + penalty +
-  `attn_entropy_coef`. **ONLY the nested-scan stacking failed.** Fixes to try: (i) `variable_carry='aux'`
-  instead of `variable_axes={'aux':0}` on both scans + `sow(..., reduce_fn=jnp.add, init_fn=lambda:0.0)`
-  — carry a scalar entropy accumulator through each scan instead of stacking a per-tick axis; or
-  (ii) thread the entropy out as an explicit scan `y`-output rather than a sown collection. **Then
-  RE-SMOKE** (`--from-py-fn=cleanba.config:sokoban_drc_attn_vardepth_600m total_timesteps=1000000`) —
-  it MUST step with 0 errors before relaunching the full run. λ=0.01 start; watch `attn_entropy` fall.
-- **When the 600M finishes (or at a 30M ckpt): run the mechinterp (§5)** — does ≥1-tick depth + the
-  longer run give a rising thinking-curve / better valid generalization than the 200M, or is
-  `n_recurrent=1` still the ceiling (→ next experiment: bump to `n_recurrent=3`)? Add sparsity (path B)
-  and compare recovery-of-𝒩 (does it sharpen past 3.1×?).
-- **Repo:** branch `recurrent-attention-core`. Local edits this session are **NOT committed/pushed**
-  (deployed to the node via base64, §6). Commit when ready.
+1. **Binding** — latent cells bind to environment states.
+2. **Transition-respecting relations** — the learned routing between latent cells respects the
+   environment's one-step transition graph $\mathcal{N}$ (information flows along $\mathcal{N}$).
+3. **Planning** — the recurrent "thinking" loop, applied over those bound, $\mathcal{N}$-respecting
+   latents, implements planning (value-based lookahead / value propagation).
+
+**Status: all three shown on the trained model (§2). The central result is that (1)–(2) are EMERGENT
+— dense attention with NO locality mask discovers them.** Imposing a king-mask would hard-code
+$\mathcal{N}$ and make the claim circular — **do NOT mask** (this was considered and rejected).
 
 ---
 
-## 1. WHAT THIS SESSION ADDED (architecture + mechanisms)
+## 1. THE MODEL / RUN (the one and only run we analyze)
 
-All in the cleanba JAX/flax codebase. Three additions, each isolated + backward-compatible:
-
-### (a) Free-slot core — `cleanba/slot_lstm.py` (`sokoban_drc_slots_*` in config.py)
-`BaseLSTM` subclass whose latent cells are **N free slots (no spatial position)**. Binding = a
-slot-attention competition over the H·W board tokens (softmax over slots); routing = dense slot↔slot
-attention; per-slot learnable identity `slot_mu` (added each tick — distinct slots even from a zeroed
-carry; the "start at μ" stabilizer). `skip_final=False` required (slots can't take the spatial skip).
-Carry shape `(B, N, d)`. **Verdict: trains but overfits + routing stays diffuse (§3) — the purest test
-of "discovered binding+𝒩", and it failed, which is the informative negative control.**
-
-### (b) Variable thinking depth — `convlstm.py` + threaded through IMPALA
-The recurrence depth (inner thinking ticks = `repeats_per_step`) is **gated to a per-rollout sampled
-depth `n_active`**: `_apply_cells` always scans the static `K_max` ticks, but each tick `k` does
-`carry = where(k < n_active, updated, carry)` — ticks past the budget are identity. **Gradient-exact:
-verified `grad(gated d) == grad(true d-tick model)` bit-for-bit, and cell-param grad scales with d
-(0 at d=0 → grows to d=6). So at d ticks the core is backpropped exactly d times.** `n_active` is
-sampled once per rollout (uniform in `Args.variable_thinking_depth=(lo,hi)`), **stored in the
-`Rollout` tuple (`n_active_t`)** so the actor and learner replay the *same* depth (V-trace stays
-consistent), threaded through `get_action`/`get_logits_and_value`/`step`/`scan`/`_apply_cells`.
-Default `n_active=None` → full depth → other cores unchanged.
-
-### (c) Attention-sparsity entropy penalty — see §2 for the full explanation
-`Args.loss.attn_entropy_coef · (mean attention entropy)` added to the loss → pushes cells to attend
-to *few* sources. Wired via a `sow`-under-scan + `is_mutable_collection('aux')` trick (§2).
+- **Config:** `cleanba.config:sokoban_drc_attn_vardepth_entmax_d3` — state-indexed attention-LSTM core,
+  **dense** attention (`use_attention_mask=False`) with a **1.5-entmax** sparse normalizer
+  (`attn_norm="entmax15"`), depth **D=3** (`n_recurrent`), up to **K=6** thinking ticks, 4 heads,
+  C=32. **Variable thinking depth** d∼U{1..6} per rollout (learner replays same depth).
+- **Training:** IMPALA, Boxoban unfiltered-train, **300M steps, FINISHED.** Online train solve ≈83%,
+  `valid_medium` ≈31% (greedy full depth), `var_explained`=0.99, entropy 1.37→0.29.
+- **Checkpoints (node):** `/workspace/runs/vd_d3_entmax/default/wandb/offline-run-20260613_081013-er45zk8y/local-files/cp_*`
+  at 2/5/20/40/.../300M (every 20M). Final = `cp_299996160`. Backup of 140M at
+  `/workspace/saved_ckpts/cp_139991040`.
+- **Pulled local + committed:** `results/checkpoints/cp_139991040/` (140M, SHA-verified), commit
+  `b641917`. Code committed in `2c9d074` (branch `recurrent-attention-core`, pushed).
+- **Three training requirements (all verified):** (1) random depth; (2) gradients flow through exactly
+  d weight-tied ticks — **bit-exact** (`tests/check_vardepth_grad.py`); (3) entmax sparsity is
+  architectural, not a loss penalty (`tests/check_entmax.py`, FD-verified). `cleanba/entmax.py` =
+  sparsemax + 1.5-entmax with closed-form `custom_vjp`.
 
 ---
 
-## 2. THE SPARSITY PENALTY (design — currently REVERTED, see §0)
+## 2. WHAT WE'VE SHOWN (evidence per step)
 
-> **STATUS:** this design was implemented + validated in isolation but **reverted** before the 600M
-> run — the node smoke caught a nested-scan bug (the `variable_axes={'aux':0}` step does not compose
-> across the inner-tick × outer-time scans). The code below is the *intended* design; everything
-> except the nested-scan stacking was correct. This section is the spec for re-doing it (path B in
-> §0): keep all the pieces, just swap the extraction mechanism (`variable_carry`+`reduce_fn`, or an
-> explicit scan `y`-output) and re-smoke before launching.
+### Step 1 — Binding ✓
+Per-object **linear probe** $h(s)\to$ tile type (balanced accuracy, chance 0.5), 160M ckpt:
+wall **0.77**, box **0.76**, target **0.70**, agent **0.74** — all well above chance incl. the 1–4%
+rare objects. Flat over ticks (read from the input embedding, not built by the loop). The latents are
+the states.
+- Tool: `results/interp_planning_d3.py` (Q1).
+- Caveat learned: the floor-dominated 5-way aggregate probe is uninformative; use **per-object balanced**.
 
-**Goal.** Stop each cell from "accruing a little from everyone" (the diffuse/over-smoothing failure
-we measured in the free-slot core: attention entropy ≈ ln(100), uniform). Push the attention to be
-**sparse/peaked** (attend to a few — ideally the reachable neighbours).
+### Step 2 — Routing respects $\mathcal{N}$ ✓ (emergent, causal)
+- **Recovery of $\mathcal{N}$ (correlational, 160M):** with no mask, attention **mass** concentrates on
+  the wall-masked one-step neighbours at **7–13×** chance (cell0 13.0×, cell1 11.8×, cell2 7.0×; chance
+  0.027). Entmax support is broad (~44–88 keys) → mass-concentration, not hard sparsity.
+  Tool: `interp_planning_d3.py` (Q2).
+- **Through-walls (CAUSAL, 300M) — the key test:** flip a floor cell to a wall at matched pixel
+  distance and measure agent-latent shift. **Blocked-by-wall influence is 0.38× the open one**
+  (open 0.857 vs blocked 0.323; partial corr(influence, graph-dist | Euclid) = **−0.32**). Information
+  **routes around walls, along $\mathcal{N}$**, not through Euclidean space.
+  Tool: `results/interp_wall_d3.py`. (Onset/timing is distance-independent ~2 ticks — fast/parallel —
+  but *magnitude* is graph-gated; `interp_topo_d3.py`, `interp_perturb_d3.py`.)
 
-**Mechanism = soft entropy penalty.** Each cell's attention is a softmax distribution `w` over the S
-keys. Its entropy `H(w) = −Σ wⱼ log wⱼ` is high when spread out, low when peaked. We add
-`λ · mean_cells H(w)` to the training loss; minimizing it pressures the attention to sharpen — soft
-(traded against the RL reward) and tunable via `λ` (`attn_entropy_coef`, currently 0.01).
+### Step 3 — Planning ✓ (value-based lookahead / value propagation)
+- **Thinking helps:** faithful depth sweep `valid_medium`: d1 0.258 → d4 **0.336** (peak) → d6 0.319
+  (rises then mild over-thinking). Tool: `results/thinking_curve_vardepth.py`.
+- **Lookahead consistency (300M) — the decisive test:** the policy agrees with
+  $\arg\max_a[r_a+\gamma V(s'_a)]$ over its **own value** at **0.41** (chance 0.25), and consistency
+  **rises with thinking depth** (0.34→0.41); thinking flips 13.7% of actions to the lookahead choice.
+  Tool: `results/interp_lookahead_d3.py`. → the loop *does* the lookahead.
+- **It's NOT depth-1 lookahead — it's multi-hop value propagation.** Under weight-tying the same backup
+  runs at every cell every tick, so the successor's value is itself a backup. Evidence: the agent's
+  latent depends on states **many hops away along $\mathcal{N}$** (perturbation final ‖Δh‖ decays
+  d1 1.33 → d9 0.48, graph-gated), reached in ~2–3 ticks (parallel). → **amortized, parallelized
+  value iteration**: weight-tied graph-respecting backup, iterated ~2–3 ticks, value largely amortized
+  into the trained head; agent acts greedily over the propagated successor values.
+- **No explicit multi-step plan is stored:** decoding executed actions from the readout, only $a_0$ is
+  decodable (0.70→0.97 over ticks); $a_1..a_5$ at chance. The horizon lives in $V$, not an internal
+  trajectory. Tool: `results/interp_planq_d3.py`. (So: value propagation, not tree/trajectory search.)
 
-**The hard part + the fix.** The attention `w` is computed *inside* two nested scans (thinking-ticks
-× time), so getting its entropy out to the loss is the challenge (naive `capture_intermediates`
-crashes — it's exactly what broke the interp). Solution, 5 pieces:
-1. **`attn_lstm.py`** — compute the softmax weights *explicitly* (an einsum + `jax.nn.softmax`, ==
-   `nn.dot_product_attention`) so `w` is in hand; compute `H(w)`; **`self.sow('aux','attn_entropy',
-   mean H)` — but ONLY `if self.is_mutable_collection('aux')`.** This is the key trick: the cell sows
-   the entropy *only when the caller asked for it* (made `aux` mutable). The **learner** does; the
-   **actor and eval do not** → they skip the sow entirely (no error, no plumbing on their side).
-2. **`convlstm.py`** — both scans (tick-scan in `_apply_cells`, time-scan in `scan`) declare
-   `variable_axes={'aux':0}` so the sown scalar is stacked through the scans. Verified safe for cores
-   that never sow `aux` (conv/slot) — the collection is just empty.
-3. **`cleanba_impala.py`** — the learner's `get_logits_and_value` partial gets `mutable=['aux']`, so
-   the cell sows and `policy.apply` returns `(output, aux_collection)`.
-4. **`impala_loss.py`** — unpacks `(…), _aux = get_logits_and_value(…)`, computes
-   `attn_entropy = mean(all sown values)`, and adds `args.attn_entropy_coef * attn_entropy` to
-   `total_loss` (+ logs it as a metric). Gradient flows through the sown entropy to the params
-   (verified).
-5. **`config.py`** — `sokoban_drc_attn_vardepth_600m` sets `attn_entropy_coef=0.01`.
-
-**Validation done:** standalone flax micro-test (sow-under-scan extracts + stacks + gradient flows +
-unused-collection-safe); local model test (learner extracts entropy 4.51@randinit + gradient flows;
-actor/eval return the plain 4-tuple with no sow; conv core unaffected); node smoke ran with 0 errors.
-**To tune:** raise `λ` for more sparsity (too high kills useful attention). Watch the `attn_entropy`
-metric in wandb — it should fall over training.
-
----
-
-## 3. RESULTS (this session + prior context)
-
-### Free-slot core `s_sm_0` (sokoban_drc_slots_softmax, 200M) — NEGATIVE CONTROL
-- Behavioural: train_unfiltered **0.67**, valid_medium **0.065**, thinking-curve **flat**.
-- Interp (`interp_slots.py`): binding is **object/salience-biased** (bound squares 1.7× enriched for
-  box/target/agent, targets 2.1×; avoids walls 46% vs 69%) but **not injective** (18.9 distinct
-  squares, per-slot type-consistency 0.52); routing is **diffuse** (recovery-of-𝒩 **1.03×**, entropy
-  4.35 ≈ uniform 4.61); ablating routing → **90% of actions unchanged** (routing ~10% load-bearing).
-- Read: free slots overfit + plan via diffuse binding-refinement, **not** graph propagation.
-
-### Spatial dense-attention, variable-depth `vardepth` (200M) — the headline + the caveat
-- Config: `sokoban_drc_attn_vardepth` = dense attn (no mask), softmax, `n_recurrent=1`, `K_max=6`,
-  d∈{0..6}. Returns −7→−0.18 (avg over depths), ep-length 75→62.
-- **Recovery-of-𝒩 (`interp_attn.py`) — POSITIVE:** square×square attention concentrates **3.1×** on
-  grid-neighbours (per-head 4.7/0.3/4.3/3.1 — 3 local heads + 1 global), entropy 3.85<4.61; learned
-  positional bias ring-1 **+0.27** vs center/far ≈0. **Dense attention LEARNED the local stencil with
-  no mask** — the abstract's central claim, and what the free-slot (1.03×) couldn't do.
-- **Thinking-curve (`thinking_curve_vardepth.py`, sweep inner depth d=0..6) — NEGATIVE:** valid
-  d=0:0.000→d=1:0.008→…→d=6:0.005 (~1% flat); train d=0:0.000→d=1:0.253→d=2:**0.286**(peak)→d=6:0.274.
-  Only the **d=0→1 jump** matters (running the core at all → validates the (1,6) range). Beyond d=1
-  thinking is flat. Weak solver (28% train, ~1% valid).
-- Read: **recovering 𝒩 was necessary but not sufficient.** Likely culprit for weak planning:
-  `n_recurrent=1` (too shallow to *use* the graph). → motivates the 600M with a hope that ≥1-tick
-  depth + sparsity (+ maybe later `n_recurrent=3`) helps.
-
-### Prior attention/cellwise arms (in `all_ckpts.tar`, pre-session — context)
-thinking-curve (axis-2, valid_medium): attn_softmax(masked) 0.458 +0.049 · attn_plain(masked maxplus)
-0.377 +0.047 · attn_dense(maxplus) 0.215 +0.013. **Aggregation contrast:** maxplus ≈ softmax ≈ mean
-for thinking-lift (Bellman op not special); the **locality MASK** drives thinking-scaling far more
-than the aggregator; `dense_sum` diverges (dense needs a *normalized* aggregator).
+### Methodology notes (important — two probes were wrong then corrected)
+- **Faithful recompute:** the model's own forward (`get_action`/`get_logits_and_value`) hits a
+  `TracerArrayConversionError` on the offset-tied `rel_bias` gather under `nn.scan` (jit/GPU/eager-GPU).
+  **ALL interp recomputes the D=3 entmax stack in plain JAX from params** (`recompute_d3` in
+  `interp_planning_d3.py`) + head matmuls for logits/value — crash-free, GPU-safe, validated to
+  reproduce the model's hidden to **1.8e-7** (`--self-test`).
+- Corrected probes: (i) flat "steps-to-think" eval is the wrong axis → use the `n_active` sweep;
+  (ii) decoding the plan from the *initial* state can't detect planning → use **successor-value
+  lookahead** (Step 3). Both corrections flipped conclusions; keep them in mind.
 
 ---
 
-## 4. THE 600M RUN (running — pick this up first)
-- `sokoban_drc_attn_vardepth_600m`: spatial dense attn, softmax, `n_recurrent=1`, `K_max=6`,
-  **d∈{1..6}** (always runs the core ≥1 tick — d=0 was useless), **+ entropy penalty λ=0.01**, 600M
-  steps, checkpoints every 30M. `tmux vd600`, `/workspace/runs/vardepth600`, log
-  `/workspace/logs/vardepth600.log`.
-- **Monitor:** `grep 'update=' /workspace/logs/vardepth600.log | tail` (SPS≈9k solo; returns;
-  ep-length). Also pull the **`attn_entropy`** metric from the wandb offline files — it should DROP
-  over training (sparsity working). Watch for collapse (returns stuck) / NaN.
-- **When done (or at a good ckpt):** run the mechinterp (§5) on the final ckpt: (i) `interp_attn`
-  recovery-of-𝒩 (did sparsity sharpen it past 3.1×? entropy lower?), (ii) `thinking_curve_vardepth`
-  (does the depth sweep now rise past d=1?), (iii) compare to the 200M vardepth + the free-slot.
-- **If planning is still weak:** the prime suspect is `n_recurrent=1`. Next experiment: bump to
-  `n_recurrent=3` (match the prior attn arms' capacity) + d∈{1..6} + sparsity, short re-test first.
+## 3. WHAT'S NEXT (prioritized)
+
+1. **Bellman self-consistency (IN FLIGHT, `results/interp_bellman_d3.py`):** measure
+   $|V(s)-\max_a[r_a+\gamma V(s'_a)]|$ at the agent AND recursively at greedy successors (depths 0–3).
+   Low+flat ⇒ V is a VI fixed point everywhere ⇒ the recursion holds (multi-step propagation);
+   growing ⇒ bounded effective depth. **This pins the planning depth.** (Was blocked only by the
+   safety-classifier outage; just run it.)
+2. **Emergence-over-training sweep (the key remaining FIGURE):** run the Step-1/2/3 probes
+   (binding, through-walls, lookahead-consistency, thinking-curve) at checkpoints **2M / 20M / 80M /
+   300M**. If all three start near-chance and rise together, that's the causal "RL *induced* the chain"
+   result — the heart of the thesis. (Pure inference on existing ckpts; GPU is free.)
+3. Optional sharpening: nonlinear probes; box-push-aware value ground truth (vs the navigation proxy);
+   re-run interp at the final 300M ckpt (most numbers above are 160M).
+4. Deeper-planning lever (separate experiment, optional): if we want planning beyond shallow ~2–3-tick
+   propagation, try a depth curriculum or a convergence-promoting "deep-thinking" objective — NOT a
+   mask.
+
+**Writeup:** `writeup/planning_emergence.tex` + `planning_emergence.pdf` (4 pages, build with
+`tectonic`) — the 3-step results with tables. Update it as (1)/(2) land.
 
 ---
 
-## 5. MECH-INTERP TOOLS (all in `results/`, run on the node)
-Approach: load a checkpoint, run/recompute the core, extract attention + per-cell states, analyse.
-All validated to reproduce the model's own readout. Run with the node venv + a ckpt dir (a `Path`).
-- **`thinking_curve_vardepth.py --ckpt <cp_dir>`** — sweeps the *inner* depth `n_active`=0..6 (bakes
-  it into `get_action`, `steps_to_think=[0]`), reports valid_medium + train solve-rate per depth.
-  This is the faithful thinking-test for variable-depth models (the eval harness's `steps_to_think`
-  is a *different* axis — extra full-depth steps on the initial obs).
-- **`interp_attn.py --ckpt <cp_dir> [--king]`** — SPATIAL attention recovery-of-𝒩: recomputes the
-  square×square attention, measures mass on grid-neighbours vs chance (lift), per-head, entropy, and
-  the learned `rel_bias` by offset. Gets the embed via a method-apply of `_compress_input` (NOT
-  `capture_intermediates`, which crashes on the rel_bias gather).
-- **`interp_slots.py --ckpt <cp_dir>`** — slot-core: binding (slot→square, object enrichment),
-  recovery-of-𝒩 over slots, routing ablation, per-tick.
-- Checkpoint dirs: `/workspace/runs/<run>/default/wandb/offline-run-*/local-files/cp_<step>` (find the
-  latest with `ls -dv … | tail -1`). Load via `cleanba.cleanba_impala.load_train_state(Path(cp), env_cfg=…)`
-  → returns `(policy, _, cp_cfg, train_state, _)`.
+## 4. INTERP TOOLING (all in `results/`, run on the node)
+
+All load a checkpoint, **recompute** the core (crash-free), and analyse. Run with a small GPU slice
+(`XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.1`) or CPU.
+
+| script | what it measures | step |
+|---|---|---|
+| `interp_planning_d3.py` | binding (per-object) + recovery-of-$\mathcal{N}$ + nav-plan probes; `--self-test` validates recompute | 1,2 |
+| `interp_wall_d3.py` | through-walls causal: blocked vs open influence at matched pixel dist | 2 |
+| `interp_perturb_d3.py`, `interp_topo_d3.py` | causal influence-radius vs ticks; graph-vs-Euclidean onset | 2 |
+| `interp_lookahead_d3.py` | policy vs 1-step lookahead over own value, by thinking depth | 3 |
+| `interp_planq_d3.py` | multi-step plan decodability vs tick (is a trajectory stored?) | 3 |
+| `interp_bellman_d3.py` | Bellman residual at agent + successors (recursion depth) | 3 |
+| `thinking_curve_vardepth.py` | solve-rate vs inner thinking depth `n_active` | 3 |
+
+Checkpoint path: `/workspace/runs/vd_d3_entmax/default/wandb/offline-run-*/local-files/cp_<step>`
+(`ls -dv … | tail -1` for the latest). Load via
+`cleanba.cleanba_impala.load_train_state(Path(cp), env_cfg=…)`.
 
 ---
 
-## 6. INFRA / HOW TO DRIVE THE NODE
-- **Node:** H200 (144GB, 192 cores). `ssh kz362uma1m94cz-64412132@ssh.runpod.io -i ~/.ssh/id_ed25519`.
-  Repo `/workspace/recurrent-planner`, venv `.venv` (jax 0.4.34 cuda12), sokoban cache
-  `/opt/sokoban_cache/boxoban-levels-master`.
-- **PTY-only proxy:** `ssh host 'cmd'` hangs. Pipe a heredoc to `ssh -tt … ` ending with `exit`;
-  filter echo with `tr -d '\r' | sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g'`. Needs Bash
-  `dangerouslyDisableSandbox: true` for outbound SSH. The PTY occasionally *displays* doubled chars
-  (echo only) — verify by SHA, don't trust the echo.
-- **File transfer (scp/sftp DON'T work):** gzip → base64 → `fold -w700` → `printf '%s' 'CHUNK' >>`
-  lines → `base64 -d | gunzip > target` → **verify `sha256sum` == local `shasum -a 256`, retry on
-  mismatch.** (See any transfer block in this session's history.) Inline the `ssh` command in the
-  loop — don't put it in a shell var (zsh won't word-split it).
-- **Launch:** `tmux new-session -d -s NAME "cd /workspace/recurrent-planner && PYTHONUNBUFFERED=1
-  WANDB_MODE=offline XLA_PYTHON_CLIENT_MEM_FRACTION=0.9 .venv/bin/python -m cleanba.cleanba_impala
-  --from-py-fn=cleanba.config:FN <overrides> > /workspace/logs/NAME.log 2>&1"`. Overrides are bare
-  `key=value` (farconf): `total_timesteps=…`, `seed=…`, `base_run_dir=…`. Kill: `tmux kill-session` +
-  `pkill -9 -f cleanba_impala` (tmux-kill leaves the python alive).
-- **Long waits:** local `sleep N` in a foreground Bash is blocked; use `run_in_background: true`.
-  Remote `sleep` inside the SSH heredoc drops on the proxy idle-timeout past ~6 min. A node-side
-  `tmux` logger that appends every 5 min survives; poll the log.
-- **Build env (if node is reset — `/opt` & uv wiped, `/workspace` persists):** `build_env_pod2.sh`
-  pattern (uv venv py3.10, `--no-deps -r requirements.txt`, `-e . -e ./third_party/gym-sokoban`,
-  envpool cp310 fork wheel, then `jax[cuda12]==0.4.34`); clone `google-deepmind/boxoban-levels` →
-  `/opt/sokoban_cache/boxoban-levels-master`.
+## 5. INFRA / HOW TO DRIVE THE NODE
+
+- **Node:** H200, `ssh kz362uma1m94cz-64412132@ssh.runpod.io -i ~/.ssh/id_ed25519`. Repo
+  `/workspace/recurrent-planner`, venv `.venv` (jax cuda12 0.4.34), sokoban cache `/opt/sokoban_cache`.
+- **PTY-only proxy:** `ssh host 'cmd'` hangs. Pipe a heredoc to `ssh -tt … BatchMode=yes` ending with
+  `exit`; filter echo with `tr -d '\r' | sed -E 's/\x1b\[[0-9;?]*[a-zA-Z]//g'`. Needs Bash
+  `dangerouslyDisableSandbox: true` (outbound SSH). **NB: that flag is gated by an auto-mode safety
+  classifier; if it returns "temporarily unavailable", just wait/retry — not a code problem.**
+- **File transfer (scp/sftp don't work):** for small files, base64 → `fold -w700` → `printf '%s' 'CHUNK'
+  >> /tmp/f.b64` lines → `base64 -d > target`, verify SHA. For a ~14MB checkpoint, stream it OUT:
+  `base64 -w0 file; echo` over the SSH stdout, then strip ANSI + decode locally (verify SHA).
+- **Local CPU diag venv** (`/tmp/attn-diag`, ARM Mac, no envpool) for `--self-test`s; rebuild via
+  `uv venv /tmp/attn-diag --python 3.10 && uv pip install … "jax==0.4.34" "jaxlib==0.4.34" "flax~=0.8.0"
+  "optax~=0.1.4" "numpy==1.26.4" gymnasium rlax "setuptools<81" gym_sokoban` (it gets wiped by /tmp
+  cleanup).
+- **Local LaTeX:** `tectonic` (self-contained) — `cd writeup && tectonic planning_emergence.tex`.
 
 ---
 
-## 7. STALE / DON'T
-- Old RunPod IPs in the `runpod-*` memory notes are DEAD. Only the node in §6 is live.
-- `capture_intermediates=True` crashes the attention forward (rel_bias gather → TracerArrayConversion).
-  Use the recompute / method-apply approach (§5), or the `sow('aux',…)+mutable` approach (§2).
-- The training `avg_episode_returns` is **misleading** — it's averaged over sampled depths and
-  includes partial-box credit, so it overstates the greedy solve-rate. Trust the post-hoc eval.
-
-## 8. REFERENCES
-DRC (Guez 2019, 1901.03559); Sokoban interp (Bush 2504.01871, Taufeeque 2407.15421); VIN (Tamar
-1602.02867); sparse attention (Peters 2019, entmax/sparsemax); multi-step PI (Efroni 2018);
-deep-thinking/extrapolation (Schwarzschild 2021), PonderNet (Banino 2021).
+## 6. STALE / DON'T
+- **Do NOT add a hard attention mask** (`use_attention_mask=True`) as the main run — it hard-codes
+  $\mathcal{N}$ and defeats the emergence claim. Dense + entmax is the substrate.
+- **Do NOT call the model's own `get_action`/`get_logits_and_value` for interp** — `rel_bias`-gather
+  tracer crash. Use `recompute_d3` + head matmuls.
+- Old runs (slot cores `s_sm_*`/`s_mp_*`, cellwise, the 200M `vardepth`, the 600M D=1 `vardepth600`,
+  smoke tests) are **superseded** and being deleted from the node. The slot core
+  (`cleanba/slot_lstm.py`) remains in the source as the documented negative control (free slots do NOT
+  recover $\mathcal{N}$); keep the code, not the run dirs.
+- Training `avg_episode_returns` is misleading (averaged over depths + partial-box credit); trust the
+  post-hoc eval / interp.
