@@ -148,3 +148,7 @@ envpool
 .vscode
 k8s_copy/results/checkpoints/
 *.tar
+
+# stale/extra pulled checkpoints (keep local, do not track)
+results/checkpoints/local_max_peak/
+.claude/
