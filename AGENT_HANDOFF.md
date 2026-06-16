@@ -16,7 +16,9 @@ on Sokoban — and the structure must **emerge from RL**, not be architecturally
    iteration**: (3a) amortized, graph-respecting **policy EVALUATION** — goal-directed value propagation
    along $\mathcal{N}$ — in the loop, plus (3b) a **one-step lookahead policy IMPROVEMENT** at the actor
    head. (NOT value iteration — no max in the loop; NOT successor representation — the goal is baked into
-   the iterate. This corrects the earlier "amortized value iteration" wording; see §2 Step 3.)
+   the iterate.) **(3c)** Causally, the value field **tracks task (goal/box) and physics (wall) changes,
+   reaches the agent, and re-plans** — via propagated value *content* through a **fixed** $\mathcal{N}$-kernel,
+   not by re-routing. (Corrects the earlier "amortized value iteration" wording; see §2 Step 3.)
 
 **Status: all three shown on the trained model (§2). The central result is that (1)–(2) are EMERGENT
 — dense attention with NO locality mask discovers them.** Imposing a king-mask would hard-code
@@ -93,10 +95,16 @@ not by searching trajectories. Evidence:
   ~9 ticks), only ~60% converged at the trained K=6 — real inference-time iteration, but effective
   horizon (~9) ≪ the task's $\gamma{=}0.97$ horizon, so the long-range solve is **amortized into the
   weights** and the loop does a few refinement sweeps.
-- **Parallel, NOT a serial one-hop-per-tick wavefront.** $A$ is broad (~85 keys) and the perturbation
-  onset is distance-*independent* (~2–3 ticks); the field forms across $\mathcal{N}$ in parallel with
-  graph-distance-decaying *magnitude* (‖Δh‖ d1 1.33 → d9 0.48) — not a BFS frontier crawling one ring
-  per tick. Tools: `interp_perturb_d3.py`, `interp_topo_d3.py`.
+- **The learned kernel (E4):** where each cell pulls value from — attention mass decays geometrically in
+  **graph** distance ($\rho\approx0.66$, reach ~3 hops), **34% of mass beyond 1 hop**, **0.00 through walls**
+  (graph-unreachable), and a **+0.07 direct anchor on the goal cell**. A board-general, graph-respecting,
+  goal-anchored propagation kernel. Tool: `results/interp_e4_d3.py`.
+- **Reach COMPOUNDS over ticks (E5) — multi-step iterative deepening.** A perturbation $d$ hops away
+  reaches the agent only after *more* ticks for larger $d$ (arrival rises with $d$; horizon grows 0→2→8→9
+  over ticks 1→4). One tick spans ~3 hops, yet cells 7–9 away still arrive — so the cells a latent pulls
+  from are **themselves updated** each tick and reach compounds (~3 hops/tick, board fills in ~3–4 ticks).
+  Genuine multi-step propagation (not a slow 1-ring-per-tick crawl, not a one-shot blur).
+  Tool: `results/interp_e5_d3.py`. (Corrects an earlier "parallel/distance-independent onset" read.)
 - **The converged value IS a recursive Bellman fixed point (Bellman test, 300M).** Optimality residual
   $|V-\max_a(r+\gamma V(s'))|/\mathrm{std}(V)$ along the greedy trajectory at depths 0–3 =
   **[0.19 0.25 0.25 0.22]** — low + flat (recursion holds = multi-step), with a constant *negative*
@@ -112,10 +120,30 @@ not by searching trajectories. Evidence:
 - **No explicit multi-step plan is stored:** decoding executed actions from the readout, only $a_0$ is
   decodable (0.70→0.97 over ticks); $a_1..a_5$ at chance. Tool: `results/interp_planq_d3.py`.
 
-**One-liner:** loop = amortized, parallel, graph-respecting **policy evaluation** (goal-directed value
-propagation along $\mathcal{N}$); the **improvement/lookahead** is a single argmax at the actor head =
-*one step of generalized policy iteration split across the architecture*. Corrects the earlier
-"amortized value iteration": no max in the loop ⇒ evaluation, not iteration; goal in the iterate ⇒ not SR.
+**(3c) The value field tracks TASK & PHYSICS changes, reaches the agent, and re-plans (the strengthening).**
+- **Tracks the task (E6b):** relocating the goal/box to the far side shifts the readout value in the
+  resolvent-predicted direction — $\mathrm{corr}(\Delta V,-\Delta\text{dist})=+0.18$ (goal) / $+0.16$ (box);
+  a box move moves $V$ *more* than a goal move ($1.5\sigma$ vs $1.0\sigma$). Tool: `results/interp_e6b_d3.py`.
+- **Adopts new PHYSICS (E9):** a wall that lengthens the agent's route lowers $V$ (**94%** of cases,
+  $-1.3\sigma$) vs a matched off-path wall ($-0.35\sigma$); the effect **builds over ticks**.
+  Tool: `results/interp_e9_d3.py`.
+- **Reaches the agent + re-plans (E10):** a path-blocking wall *outside the agent's conv view* shifts the
+  agent's **own** latent **2.2×** an off-path wall (building over ticks) and changes its greedy action
+  **3×** more often. So: new physics → value drops → propagates back to the agent → re-plans.
+  Tool: `results/interp_e10_d3.py`.
+- **Mechanism — via CONTENT, not re-routing (E7/E7b/E8).** The attention operator $A$ does **not** re-route
+  for injected edits (row-change near/far ratio 1.1×; neighbours of a new wall keep attending to it —
+  `interp_e7_d3.py`/`interp_e7b_d3.py`), and wall cells are **not** dead-norm ($\|v\|$ wall/floor 0.94, flip
+  1.06 — `interp_e8_d3.py`). So $A\leftrightarrow\gamma P$ is a **fixed, board-conditioned** graph-kernel;
+  new physics enters as **propagated value content**, not by re-wiring routing. A *functional* world model
+  (the value adopts the board's physics) realized by a fixed kernel + content, not a dynamically re-routing one.
+
+**One-liner:** loop = amortized, graph-respecting **policy evaluation** — value propagation along a
+**fixed, board-conditioned** $\mathcal{N}$-kernel to a recursive Bellman fixed point; the
+**improvement/lookahead** is a single argmax at the actor head (one step of generalized policy iteration).
+Interventions confirm the value field **tracks task (goal/box) & physics (wall) changes, reaches the agent,
+and re-plans** — via propagated value *content*, not by re-routing. Corrects "value iteration" (no max ⇒
+evaluation) and "successor representation" (goal in the iterate).
 
 ### Methodology notes (important — two probes were wrong then corrected)
 - **Faithful recompute:** the model's own forward (`get_action`/`get_logits_and_value`) hits a
@@ -131,15 +159,16 @@ propagation along $\mathcal{N}$); the **improvement/lookahead** is a single argm
 
 ## 3. WHAT'S NEXT (prioritized)
 
-1. **Per-tick mechanism (DONE this session — `interp_bellman_d3.py`, `interp_e1_d3.py`, `interp_e2_d3.py`).**
-   Bellman: converged $V$ is a recursive fixed point (residual/std(V) [0.19 0.25 0.25 0.22], low+flat).
-   E1: attention operator stationary/non-sharpening (top-1 ~0.16, support ~85), contraction $\rho\approx0.89$
-   (~60% converged at K=6) → not value iteration; genuine but amortized iteration. E2: relocating the goal
-   moves $h_2$ far-field 0.35 (> wall 0.22, ratio 1.55) → policy-EVALUATION, not successor representation.
-   **Conclusion: 2-step generalized policy iteration (eval in loop + lookahead improvement at head); see §2.**
-   *Optional remaining confirmation:* E3 (scale $x\to\alpha x$; converged $V(\alpha x)$ affine, no kinks =
-   behavioral confirmation of no-max). Also: fix the E1 value-wavefront metric (within-band $\gamma^d$
-   variance ≈ 0 made it explode) and use a box-push-aware value target instead of the BFS-nav proxy.
+1. **Per-tick mechanism + interventions (DONE this session — `interp_{bellman,e1,e2,e4,e5,e6b,e7,e7b,e8,e9,e10}_d3.py`).**
+   The loop is **amortized policy evaluation**: value propagation along a fixed, graph-respecting kernel
+   (E4: $\rho{=}0.66$, 0 through walls, +0.07 goal-anchor) that **compounds over ticks** (E5), no max (E1
+   stationary operator + `readout="softmax"`), converging to a recursive Bellman fixed point. The value
+   field **tracks task & physics changes, reaches the agent, and re-plans**: goal/box relocation moves $V$
+   in-direction (E6b, box>goal); a path-blocking wall lowers $V$ (E9: 94%, $-1.3\sigma$, builds over ticks);
+   the change reaches the agent's own cell (E10: $2.2\times$ off-path) and re-plans the action ($3\times$).
+   This is via **content propagation, not routing re-wire** (E7/E7b: $A$ near-invariant to edits; E8: walls
+   not dead-norm). **See §2 Step 3.** *Optional nits:* the value↔distance correlation is coarse ($+0.15$); a
+   box-push-aware $V^\*$ target would sharpen the per-cell field; E3 no-kinks is a belt-and-suspenders no-max check.
 2. **Emergence-over-training sweep (the key remaining FIGURE):** run the Step-1/2/3 probes
    (binding, through-walls, lookahead-consistency, thinking-curve) at checkpoints **2M / 20M / 80M /
    300M**. If all three start near-chance and rise together, that's the causal "RL *induced* the chain"
@@ -150,8 +179,9 @@ propagation along $\mathcal{N}$); the **improvement/lookahead** is a single argm
    propagation, try a depth curriculum or a convergence-promoting "deep-thinking" objective — NOT a
    mask.
 
-**Writeup:** `writeup/planning_emergence.tex` + `planning_emergence.pdf` (4 pages, build with
-`tectonic`) — the 3-step results with tables. Update it as (1)/(2) land.
+**Writeup:** `writeup/planning_emergence.tex` + `planning_emergence.pdf` (4 pages: 2-page body with the
+3-step results + 4 figures, then **App. A** architecture/per-tick equations/training and **App. B** every
+experiment with method + key number. Build with `tectonic`; PDF gitignored). Reflects the full E1–E10 arc.
 
 ---
 
@@ -170,6 +200,13 @@ All load a checkpoint, **recompute** the core (crash-free), and analyse. Run wit
 | `interp_bellman_d3.py` | Bellman residual at agent + successors (recursion depth) | 3 |
 | `interp_e1_d3.py` | per-tick mechanism: attention stationarity vs sharpening, contraction rate, value field (VI vs eval vs null) | 3a |
 | `interp_e2_d3.py` | reward-relabel invariance: policy-evaluation vs successor-representation | 3a |
+| `interp_e4_d3.py` | the learned kernel: attention mass vs graph distance (decay $\rho$, 0-through-walls, +goal-anchor) | 2,3a |
+| `interp_e5_d3.py` | reach vs ticks: does propagation compound (are the pulled-from cells updated)? | 3a |
+| `interp_e6b_d3.py` | far-side goal/box interventions: readout-value direction + magnitude (box>goal) | 3c |
+| `interp_e7_d3.py`, `interp_e7b_d3.py` | does the operator $A$ re-route under edits? (it does **not**; local $\|\Delta A\|$ + neighbour mass) | 3c |
+| `interp_e8_d3.py` | value-projection norm by tile + floor→wall flip (are walls "dead"? **no**) | 3c |
+| `interp_e9_d3.py` | does the value field adopt new physics? (path-blocking vs off-path wall lowers $V$) | 3c |
+| `interp_e10_d3.py` | does the wall's value-change reach the agent + re-plan its action? | 3c |
 | `thinking_curve_vardepth.py` | solve-rate vs inner thinking depth `n_active` | 3 |
 
 Checkpoint path: `/workspace/runs/vd_d3_entmax/default/wandb/offline-run-*/local-files/cp_<step>`
@@ -202,6 +239,10 @@ Checkpoint path: `/workspace/runs/vd_d3_entmax/default/wandb/offline-run-*/local
   "value iteration" and NOT "successor representation." No $\max_a$ exists in the trained loop
   (`readout="softmax"`, `maxplus` off, convex-average aggregation; E1 stationary operator); the goal is in
   the iterate (E2). Use the §2 Step 3 wording, not the old "amortized value iteration."
+- **The operator $A$ is a FIXED, board-conditioned kernel (do not claim it dynamically re-routes).** Under
+  injected edits it does **not** re-wire (E7/E7b) and walls are not dead-norm (E8); the value field still
+  adopts new physics (E9/E10) via **propagated value content**, not routing changes. It's a *functional*
+  world model, not a re-routing one — phrase §2 Step 2 as "routes along the **given** board's $\mathcal{N}$."
 - **Do NOT add a hard attention mask** (`use_attention_mask=True`) as the main run — it hard-codes
   $\mathcal{N}$ and defeats the emergence claim. Dense + entmax is the substrate.
 - **Do NOT call the model's own `get_action`/`get_logits_and_value` for interp** — `rel_bias`-gather
