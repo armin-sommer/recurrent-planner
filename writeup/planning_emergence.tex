@@ -112,12 +112,17 @@ value is a recursive Bellman fixed point (optimality residual$/\mathrm{std}(V)$ 
 $[0.19,0.25,0.25,0.22]$ over greedy successors $0$--$3$); the policy increasingly matches one-step
 value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$).
 
-\paragraph{Interventions confirm a goal-directed, box-aware value.} Relocating the goal or a box to the
-far side of the board shifts the readout value in the direction the resolvent predicts (Fig.~\ref{fig:abl}):
-$V$ rises as the goal moves closer to the agent ($\mathrm{corr}(\Delta V,-\Delta d_{\mathrm{agent}\to\mathrm{goal}})=+0.18$)
-and as a box moves closer to a target ($+0.16$; $n{=}256$, all 16 ticks positive). Crucially, moving a
-\emph{box} changes the value \emph{more} than moving the goal ($1.5\sigma$ vs $1.0\sigma$) --- the value is
-about the box-pushing \emph{task}, not mere navigation.
+\paragraph{The value field tracks the task and the physics, and re-plans.} Causal interventions confirm a
+genuine policy-evaluation field (Fig.~\ref{fig:abl}). Relocating the goal or a box to the far side shifts
+the value in the resolvent-predicted direction --- higher as the goal nears the agent or a box nears a
+target ($\mathrm{corr}=+0.18/+0.16$, $n{=}256$) --- and a box move moves it \emph{more} than a goal move
+($1.5\sigma$ vs $1.0\sigma$), as the box is the task-critical object. The field also adopts new
+\emph{physics}: a wall that lengthens the agent's route lowers the value ($94\%$ of cases, $-1.3\sigma$),
+far more than a matched \emph{off-path} wall ($-0.35\sigma$), and this consequence \emph{builds over
+thinking ticks}. Crucially it reaches the agent's \emph{own} square ($2.2\times$ an off-path wall, again
+building over ticks) and re-plans its move ($3\times$ the action-change rate of a cosmetic wall). The model
+does this by propagating the consequence as value \emph{content} through its fixed, graph-respecting kernel
+--- not by re-routing attention.
 
 \begin{figure}[h]
 \begin{subfigure}{0.33\textwidth}\centering
@@ -147,20 +152,21 @@ about the box-pushing \emph{task}, not mere navigation.
 \end{subfigure}\hfill
 \begin{subfigure}{0.33\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=5.2cm,height=3.5cm,symbolic x coords={goal,box},xtick=data,
-  ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.8,bar width=16pt,
+\begin{axis}[ybar,width=5.2cm,height=3.5cm,symbolic x coords={goal,box,block,off},xtick=data,
+  ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.7,bar width=8pt,
   nodes near coords,every node near coord/.append style={font=\tiny},
-  tick label style={font=\scriptsize},label style={font=\scriptsize}]
-\addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)};
+  tick label style={font=\tiny},label style={font=\scriptsize}]
+\addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)(block,1.25)(off,0.35)};
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\subcaption{interventions: a far move shifts $V$ (corr $+0.18$/$+0.16$); box $>$ goal.}
+\subcaption{value moves for goal/box/path-block edits, not a cosmetic off-path wall.}
 \label{fig:abl}
 \end{subfigure}
 \vspace{-3pt}
 \caption{\textbf{Planning by value propagation.} (a)~multi-step, deepens with thinking; (b)~a wide,
-graph-respecting, goal-anchored kernel (accelerated policy evaluation); (c)~moving the goal or a box shifts
-the value in the theory-predicted direction, and a box move matters more (box-push-aware).}
+graph-respecting, goal-anchored kernel (accelerated policy evaluation); (c)~the value responds to goal,
+box, and path-blocking edits but barely to a cosmetic off-path wall --- and the change reaches the agent
+and re-plans its move.}
 \end{figure}
 
 \vspace{-4pt}
