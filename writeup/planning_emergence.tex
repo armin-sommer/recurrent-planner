@@ -10,6 +10,7 @@
 \usepackage{subcaption}
 \usepackage{titlesec}
 \usepackage{lastpage}
+\usepackage{enumitem}
 \captionsetup{font=small}
 \titlespacing*{\section}{0pt}{5pt}{1pt}
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
@@ -178,5 +179,95 @@ into the weights; a few refinement sweeps at inference) plus a one-step \textbf{
 the head --- over latents that bind to states (\S1) and route along the transition graph $\NN$ (\S2). It
 is planning by value propagation: \emph{not} value iteration, \emph{not} successor-representation
 construction, and \emph{not} trajectory or tree search (only the immediate action is decodable).
+
+\clearpage
+\appendix
+\section{Architecture and training}
+\vspace{-2pt}
+\textbf{Core.} A state-indexed attention-LSTM. The recurrent carry is, per stacked cell $d\in\{0,1,2\}$
+($D{=}3$), a cell memory $c_d$ and hidden $h_d$, each in $\mathbb{R}^{S\times C}$ over $S{=}H{\times}W{=}100$
+board squares with $C{=}32$ channels; $x\in\mathbb{R}^{S\times C}$ is a convolutional board embedding, fixed
+across ticks. Each thinking tick applies, for $d=0,1,2$ bottom-to-top (with $\mathrm{prev}$ the hidden of
+the cell below, or the top hidden from the previous tick for $d{=}0$), the weight-tied update
+\vspace{-3pt}
+\begin{align*}
+u &= \mathrm{RMSNorm}\!\big(h_d + [x;\mathrm{prev}]W_{\mathrm{in}}^d + b^d\big)\odot s^d,\\
+q,k,v &= u W_q^d,\; u W_k^d,\; u W_v^d \quad(\text{4 heads},\ d_h{=}8),\\
+A &= \mathrm{entmax}_{1.5}\!\big(qk^{\top}/\sqrt{d_h} + \mathrm{RelBias}^d\big),\qquad z=(A\,v)\,W_{\mathrm{out}}^d,\\
+[g_i,g_j,g_f,g_o] &= [x;\mathrm{prev};z]\,W_g^d + b_g^d,\\
+c_d &\leftarrow c_d\,\sigma(g_f) + \tanh(g_i)\,\sigma(g_j),\qquad h_d \leftarrow \tanh(c_d)\odot\tanh(g_o).
+\end{align*}
+\vspace{-6pt}
+
+Attention is \emph{dense} (no locality mask) with a sparse $1.5$-entmax normalizer; the aggregation
+$z=(A v)W_{\mathrm{out}}$ is a convex average (no $\max$). Up to $K{=}6$ ticks. The per-board readout pools
+$m=\mathrm{ReLU}\big((h_2+x)W_{\mathrm{dense}}+b\big)$ over the grid into actor logits $mW_a+b_a$ and a
+critic value $V=(mW_c+b_c)\,s_{\mathrm{head}}$.
+
+\textbf{Training.} IMPALA on Boxoban unfiltered-train, $300$M steps, $\gamma{=}0.97$, variable thinking
+depth $d\sim\mathcal{U}\{1..6\}$ per rollout (the learner replays the same depth). Online train solve
+$\approx83\%$, \texttt{valid\_medium} $\approx31\%$. All probes use the held-out \texttt{valid\_medium}
+split at the $300$M checkpoint.
+
+\textbf{Faithful recompute.} The model's own forward hits a tracer error on the offset-tied
+\texttt{rel\_bias} gather under \texttt{nn.scan}; every probe instead recomputes the $D{=}3$ entmax stack in
+plain JAX from the loaded parameters (\texttt{recompute\_d3}), validated to reproduce the model's final
+hidden state to $1.8\times10^{-7}$.
+
+\section{Experiments}
+\vspace{-2pt}
+Scripts are under \texttt{results/}; all on held-out \texttt{valid\_medium} at the $300$M checkpoint.
+
+\textbf{Step 1 --- binding.}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
+\item \textbf{Binding probe} (\texttt{interp\_planning\_d3.py}): linear probe $h(s)\!\to\!$ tile type,
+per-object balanced accuracy (chance $0.5$) --- wall/box/target/agent $=0.77/0.76/0.70/0.75$, flat over ticks.
+\end{itemize}
+
+\textbf{Step 2 --- relational world model (routing along $\NN$).}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
+\item \textbf{Recovery of $\NN$} (\texttt{interp\_planning\_d3.py}): attention mass on the wall-masked
+one-step move-neighbours vs uniform chance --- $7$--$13\times$; entmax support broad ($\sim$44--88 keys).
+\item \textbf{Through-walls} (\texttt{interp\_wall\_d3.py}): flip a floor cell to a wall at matched pixel
+distance; agent-latent influence for graph-far (blocked) vs graph-near (open) cells --- blocked
+$=0.38\times$ open, partial corr$(\text{infl},\text{graph}\!\mid\!\text{Euclid})=-0.32$.
+\item \textbf{Learned kernel} (\texttt{interp\_e4\_d3.py}): attention mass vs graph distance --- geometric
+decay $\rho{\approx}0.66$ (reach $\sim$3 hops), $34\%$ beyond one hop, $0.00$ to graph-unreachable cells,
+$+0.07$ directly on the goal cell.
+\end{itemize}
+
+\textbf{Step 3 --- planning by value propagation.}
+\begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
+\item \textbf{No-max / stationary operator} (config + \texttt{interp\_e1\_d3.py}): trained config is
+\texttt{readout="softmax"} (convex average), \texttt{maxplus} off; $A$ is stationary and does not sharpen
+(top-1 mass ${\approx}0.16$, ${\sim}85$ keys, $\cos(A_t,A_{t-1})\!\to\!0.995$) $\Rightarrow$ evaluation, not iteration.
+\item \textbf{Reach compounds} (\texttt{interp\_e5\_d3.py}): perturb a cell $d$ hops away; agent-influence
+onset per tick --- far cells ($d{=}7$--$9$) arrive only after ${\sim}3$--$4$ ticks (from ${\approx}0$); horizon grows.
+\item \textbf{Bellman self-consistency} (\texttt{interp\_bellman\_d3.py}): optimality residual
+$|V-\max_a(r{+}\gamma V(s'))|/\mathrm{std}(V)$ at agent and greedy successors $0$--$3$ $=[0.19,0.25,0.25,0.22]$
+(low, flat) $\Rightarrow$ recursive fixed point.
+\item \textbf{Lookahead-consistency} (\texttt{interp\_lookahead\_d3.py}): policy agreement with
+$\arg\max_a[r_a{+}\gamma V(s'_a)]$ over its own value $=0.41$ (chance $0.25$), rising $0.34\!\to\!0.41$ with depth.
+\item \textbf{Reward-relabel} (\texttt{interp\_e2\_d3.py}): move the goal (keep $P$) vs a matched wall-flip
+(change $P$); far-field latent shift $0.35$ vs $0.22$ (ratio $1.55$) $\Rightarrow$ goal in the iterate
+(policy evaluation, not a successor representation).
+\item \textbf{Far-side interventions} (\texttt{interp\_e6b\_d3.py}): relocate goal/box far ---
+$\mathrm{corr}(\Delta V,-\Delta\text{dist})=+0.18/{+}0.16$; box impact $1.5\sigma>$ goal $1.0\sigma$.
+\item \textbf{Operator adaptation} (\texttt{interp\_e7\_d3.py}, \texttt{interp\_e7b\_d3.py}): $A$ is
+near-invariant under edits (row-change near/far ratio $1.1\times$; neighbours of a new wall keep attending to
+it) $\Rightarrow$ no routing re-wire.
+\item \textbf{Value content} (\texttt{interp\_e8\_d3.py}): value-projection norm $\|v\|$, wall/floor $=0.94$,
+floor$\to$wall flip ratio $1.06$ $\Rightarrow$ walls are not ``dead''.
+\item \textbf{New physics} (\texttt{interp\_e9\_d3.py}): a path-blocking wall lowers the value ($94\%$,
+$-1.3\sigma$) vs an off-path wall ($-0.35\sigma$); the effect builds over ticks $\Rightarrow$ the value
+adopts the new transition structure.
+\item \textbf{Reaches the agent + re-plans} (\texttt{interp\_e10\_d3.py}): a path-blocking wall outside the
+agent's view shifts the agent's \emph{own} latent $2.2\times$ an off-path wall (building over ticks) and
+changes its greedy action $3\times$ more often.
+\end{itemize}
+
+\noindent Together: the loop propagates a goal-directed value field through a fixed, graph-respecting kernel
+(policy evaluation); interventions show the value field tracks task (goal/box) and physics (wall) changes,
+reaches the agent, and re-plans --- by propagating value \emph{content}, not by re-routing.
 
 \end{document}
