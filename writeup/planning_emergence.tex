@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage[margin=0.73in]{geometry}
+\usepackage[margin=0.7in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage[hidelinks]{hyperref}
@@ -19,8 +19,8 @@
 
 \newcommand{\NN}{\mathcal{N}}
 
-\title{\vspace{-1.2em}\bf Planning by Value Propagation\\[2pt]
-\large Binding, a transition-respecting graph, and amortized policy evaluation on Sokoban}
+\title{\vspace{-1.2em}\bf Planning by Value Propagation on a Learned Graph\\[2pt]
+\large Binding, transition-respecting edges, and amortized policy evaluation on Sokoban}
 \author{Recurrent-Planner project}
 \date{\vspace{-0.6em}\today}
 
@@ -29,28 +29,36 @@
 \vspace{-2.2em}
 
 \begin{abstract}
-\noindent Model-free RL on a state-indexed relational recurrent core induces \emph{planning}, via a
-three-step chain that emerges with \emph{no} locality mask: (1)~latent cells \textbf{bind} to environment
-states; (2)~the attention learns a \textbf{graph} that follows the one-step transition structure $\NN$
-(cells connect strongly to near neighbours, weakly across walls); and (3)~the recurrent ``thinking'' loop \textbf{plans} by multi-step
-value propagation, i.e.\ \textbf{amortized policy evaluation} (not value iteration --- the aggregation is
-a convex average, with no $\max$ over actions; the improvement is a one-step lookahead at the actor head).
-All three are shown causally, on held-out levels, in a 300M-step Sokoban model.
+\noindent Model-free RL on a state-indexed relational recurrent core induces \emph{planning}, and the
+cleanest description is a \textbf{graph}: the recurrent attention turns each board into a weighted directed
+graph $G{=}(V,A)$ over its squares, and the ``thinking'' loop plans by \textbf{propagating value along $G$}.
+With \emph{no} locality mask we show a three-step chain: (1)~the graph's \textbf{nodes bind} to environment
+states; (2)~its \textbf{edges follow} the board's one-step move graph $\NN$ (each node links to its walkable
+neighbours, edge weight decaying with graph distance, ${\sim}0$ across walls); and (3)~the loop runs
+\textbf{amortized policy evaluation} on $G$ --- iterating the graph operator to spread value from the goal
+node, $c{\leftarrow}\gamma_{\mathrm{eff}}Ac{+}r$ (no $\max$: a convex average over each node's edges; the
+improvement is a one-step lookahead at the head). All shown causally on held-out levels of a 300M-step
+Sokoban model.
 \end{abstract}
 
-\vspace{-0.8em}
-\section*{Setup}
+\vspace{-0.6em}
+\section*{Setup --- the core as a graph}
 \vspace{-2pt}
-The core is a state-indexed attention-LSTM: each latent is the $C{=}32$ vector at a board square $s$ over
-$S{=}H{\times}W$ tokens. Per thinking tick every cell attends over the whole board (\emph{dense}, no mask;
-4 heads; sparse 1.5-entmax), aggregates neighbour values, and applies an LSTM gate. Depth $D{=}3$, up to
-$K{=}6$ ticks, trained 300M IMPALA steps.
+A state-indexed attention-LSTM turns each board into a weighted directed graph $G{=}(V,A)$. The
+\textbf{nodes} $V$ are the $S{=}H{\times}W{=}100$ board squares, each carrying a $C{=}32$-dim latent $h(s)$.
+Per ``thinking'' tick the attention assigns an \textbf{edge weight} $A_{ss'}$ --- how much node $s$
+aggregates from node $s'$ --- computed from the nodes' contents by fixed weights and row-normalised
+($\textstyle\sum_{s'}A_{ss'}{=}1$; dense, no locality mask; 4 heads; sparse 1.5-entmax). A tick aggregates
+neighbour latents along these edges and applies an LSTM gate; the loop runs up to $K{=}6$ ticks ($D{=}3$
+stacked cells). Because $A$ is computed from content, it is \textbf{re-derived per board} --- one fixed rule,
+a board-specific graph. We write $\NN$ for the board's true one-step move graph. Trained 300M IMPALA steps.
 
-\section{Binding: the latents are the states}
+\section{Binding: the nodes are the states}
 \vspace{-2pt}
-A linear probe recovers the tile type at square $s$ from its latent $h(s)$ well above chance for every
-object class, including the rare ones (box/target/agent are $1$--$4\%$ of squares). Binding is flat across
-ticks --- read from the input embedding, not built by the loop.
+Each node encodes the environment state at its square: a linear probe recovers the tile type from its latent
+$h(s)$ well above chance for every object class, including the rare ones (box/target/agent are $1$--$4\%$ of
+squares), and this is flat across ticks --- read from the input embedding, not built by the loop. The graph's
+node features \emph{are} the states.
 \begin{center}\small
 \begin{tabular}{lcccc}
 \toprule
@@ -62,71 +70,69 @@ probe balanced acc.\ (chance 0.50) & 0.77 & 0.76 & 0.70 & 0.75\\
 \end{tabular}
 \end{center}
 
-\section{The learned graph: latent cells connect along $\NN$}
+\section{The learned graph: edges follow $\NN$}
 \vspace{-2pt}
-With no locality mask, the recurrent attention learns a graph that follows the board's one-step transition
-structure $\NN$. Each cell's attention mass concentrates on its (wall-masked) move-reachable neighbours at
-$7$--$13\times$ chance, and the connection strength decays geometrically with \emph{graph} distance
-(Fig.~\ref{fig:kernel}: $\rho{\approx}0.66$, reach $\sim$3 hops, $\sim$0 mass to graph-unreachable cells,
-plus a small $+0.07$ anchor on the goal cell). The connectivity is \emph{causal} and graph- (not pixel-)
-structured: at matched pixel distance, a cell separated from the agent by a wall (graph-far) influences the
-agent only $0.38\times$ as much as an open (graph-near) one (through-walls test; partial corr.\ of
-influence with graph-distance, controlling Euclidean, $=-0.32$). So the model learns, per board, a fixed
-adjacency weighting graph-near cells, weak across walls --- the substrate planning runs on; how a board
-\emph{change} affects behaviour is a property of what propagates along this graph (\S3).
+Do the learned \textbf{edges} trace the board's move graph $\NN$? Yes. Each node's edge weight concentrates
+on its (wall-masked) walkable neighbours at $7$--$13\times$ chance, and edge weight decays geometrically with
+the \emph{graph} distance between nodes (Fig.~\ref{fig:kernel}: $\rho{\approx}0.66$, reach $\sim$3 hops,
+${\sim}0$ weight to graph-unreachable nodes, plus a small $+0.07$ edge to the goal node). The structure is
+\emph{causal} and graph- (not pixel-) defined: at matched pixel distance, a node separated from the agent by
+a wall (graph-far) influences it only $0.38\times$ as much as a graph-near one (through-walls test; partial
+corr.\ of influence with graph-distance, controlling Euclidean, $=-0.32$). Since the edges are re-derived
+from content, each board gets its \emph{own} graph tracing \emph{its} walls --- the same fixed rule, a
+board-specific adjacency. What \emph{flows} on this graph is \S3.
 
 \begin{figure}[h]\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=9.6cm,height=3.4cm,xlabel={graph distance from cell (hops)},ylabel={mean attention mass},
+\begin{axis}[ybar,width=9.6cm,height=2.9cm,xlabel={graph distance between nodes (hops)},ylabel={mean edge weight},
   xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=10pt,xtick={0,1,2,3,4,5,6,7,8},
   tick label style={font=\footnotesize},label style={font=\small}]
 \addplot[fill=blue!55,draw=blue!60] coordinates {(0,0.007)(1,0.206)(2,0.098)(3,0.062)(4,0.047)(5,0.031)(6,0.024)(7,0.021)(8,0.018)};
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\caption{\textbf{The learned graph.} Each cell's attention mass vs graph distance to the source: geometric
-decay ($\rho{\approx}0.66$, reach $\sim$3 hops), $\sim$0 mass through walls, $+0.07$ on the goal --- a fixed,
-transition-respecting adjacency (causally confirmed by the through-walls test: blocked $0.38\times$ open).}
+\caption{\textbf{The learned graph.} Edge weight (a node's attention mass) vs graph distance to the target
+node: geometric decay ($\rho{\approx}0.66$, reach $\sim$3 hops), ${\sim}0$ weight across walls, $+0.07$ to the
+goal node --- a transition-respecting adjacency, re-derived per board (causally confirmed: a wall-blocked
+node influences the agent $0.38\times$ a graph-near one).}
 \label{fig:kernel}
 \end{figure}
 
-\section{Planning: amortized policy evaluation (value propagation)}
+\section{Planning: value propagation on the graph}
 \vspace{-2pt}
-The loop plans over this graph by \emph{propagating value}. Linearizing the value channel of one
-weight-tied tick gives the mechanism in closed form:
+Planning is a \emph{dynamics on $G$}: a value sits on each node and is propagated along the edges.
+Linearising one weight-tied tick gives it in closed form,
 \vspace{-2pt}
 \[
-c \;\leftarrow\; \gamma_{\mathrm{eff}}\,A\,c + r_{\mathrm{eff}}
+c \;\leftarrow\; \gamma_{\mathrm{eff}}\,A\,c + r
 \quad\Longrightarrow\quad
-c^\star=(I-\gamma_{\mathrm{eff}}A)^{-1}r_{\mathrm{eff}}=\sum_{i\ge0}(\gamma_{\mathrm{eff}}A)^{i}\,r_{\mathrm{eff}},
+c^\star=(I-\gamma_{\mathrm{eff}}A)^{-1}r=\sum_{i\ge0}(\gamma_{\mathrm{eff}}A)^{i}\,r,
 \]
-the discounted \textbf{policy-evaluation resolvent}: the entmax attention $A$ (row-stochastic, on $\NN$)
-plays $\gamma P^{\pi}$, the forget gate $\sigma(g_f)$ the discount, the input injection the reward source
-$r$. The aggregation $z=(A v)W_{\mathrm{out}}=\mathbb{E}_{s'\sim A}[\cdot]$ is a \emph{convex average} ---
-no $\max_a$ --- so the loop \emph{evaluates}; the $\max$ (improvement) is a single
-$\arg\max_a[r_a+\gamma V(s'_a)]$ at the head.
+which is value iteration / \textbf{policy evaluation on the graph}: $A$ is the graph operator
+(${\approx}\gamma P^{\pi}$), $\sigma(g_f)$ the discount, and $r$ the source injected at the goal node. The
+aggregation $z=(A v)W_{\mathrm{out}}=\mathbb{E}_{s'\sim A}[\cdot]$ is a \emph{convex average} over a node's
+edges --- no $\max$ --- so the loop \emph{evaluates}; the $\max$ (improvement) is a single
+$\arg\max_a[r_a+\gamma V(s'_a)]$ at the actor head.
 
-This propagation is \emph{multi-step and deepens with thinking}: a perturbation $d$ hops from the agent
-reaches it only after several ticks, building from $\approx0$ (Fig.~\ref{fig:reach}). One tick spans
-$\sim$3 hops, yet cells $7$--$9$ away still arrive --- so intermediate cells relay the signal: the cells a
-latent pulls from are \emph{themselves} updated, and reach \emph{compounds} (value propagates along the
-learned graph of \S2). The converged
-value is a recursive Bellman fixed point (optimality residual$/\mathrm{std}(V)$ flat at
-$[0.19,0.25,0.25,0.22]$ over greedy successors $0$--$3$); the policy increasingly matches one-step
-value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$).
+The propagation is \emph{multi-step and deepens with thinking}: a perturbation $d$ edges from the agent
+reaches its node only after several ticks, building from $\approx0$ (Fig.~\ref{fig:reach}). One tick spans
+$\sim$3 edges, yet nodes $7$--$9$ away still arrive --- the intermediate nodes relay the signal, so reach
+\emph{compounds} along $G$. The converged value is a recursive Bellman fixed point (optimality
+residual$/\mathrm{std}(V)$ flat at $[0.19,0.25,0.25,0.22]$ over greedy successors $0$--$3$); the policy
+increasingly matches one-step value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$).
 
-\paragraph{The value field tracks the task and the physics, and re-plans.} Causal interventions confirm a
-genuine policy-evaluation field (Fig.~\ref{fig:abl}). Relocating the goal/box to the far side shifts the
-value in the resolvent-predicted direction ($\mathrm{corr}(\Delta V,-\Delta\text{dist})=+0.18/{+}0.16$,
-$n{=}256$) --- a box move more than a goal move ($1.5\sigma$ vs $1.0\sigma$). It also adopts new
-\emph{physics}: a wall that lengthens the route lowers the value ($94\%$, $-1.3\sigma$ vs $-0.35\sigma$
-off-path), the effect \emph{builds over ticks}, reaches the agent's \emph{own} square ($2.2\times$ off-path)
-and re-plans its move ($3\times$ a cosmetic wall). All by propagating the consequence as value
-\emph{content} through the fixed kernel --- not by re-routing.
+\paragraph{The value tracks edits to the source and the graph, and re-plans.} Causal interventions confirm a
+genuine policy-evaluation field (Fig.~\ref{fig:abl}). Moving the goal (the \emph{source} node) shifts the
+value in the resolvent-predicted direction ($\mathrm{corr}(\Delta V,-\Delta\text{dist})={+}0.18/{+}0.16$ for
+goal/box; a box move more, $1.5\sigma$ vs $1.0\sigma$). Adding a wall \emph{edits the graph}: a wall that
+lengthens the agent's path lowers the value ($94\%$, $-1.3\sigma$ vs $-0.35\sigma$ for an off-path wall), the
+effect \emph{builds over ticks}, reaches the agent's \emph{own} node ($2.2\times$ off-path) and re-plans its
+move ($3\times$ a cosmetic wall). The value re-forms by propagating the consequence as \emph{content} along
+$G$ (the edges are re-derived from the board, not re-routed tick-to-tick).
 
 \begin{figure}[h]
 \begin{subfigure}{0.5\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[width=7.4cm,height=3.5cm,xlabel={thinking tick},ylabel={agent $\lVert\Delta h\rVert$},
+\begin{axis}[width=7.4cm,height=3.0cm,xlabel={thinking tick},ylabel={agent $\lVert\Delta h\rVert$},
   xmin=1,xmax=12,ymin=0,ymax=1.65,legend pos=south east,legend style={font=\tiny},
   tick label style={font=\tiny},label style={font=\scriptsize}]
 \addplot[mark=*,blue,thick,mark size=1pt] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
@@ -135,46 +141,47 @@ and re-plans its move ($3\times$ a cosmetic wall). All by propagating the conseq
 \legend{$d{=}1$,$d{=}5$,$d{=}9$}
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\subcaption{reach compounds with thinking: far cells arrive only after several ticks (multi-step).}
+\subcaption{value reaches a node $d$ edges away only after several ticks --- propagation compounds along $G$.}
 \label{fig:reach}
 \end{subfigure}\hfill
 \begin{subfigure}{0.5\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=7.4cm,height=3.5cm,symbolic x coords={goal,box,block,off},xtick=data,
+\begin{axis}[ybar,width=7.4cm,height=3.0cm,symbolic x coords={goal,box,block,off},xtick=data,
   ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.7,bar width=12pt,
   nodes near coords,every node near coord/.append style={font=\scriptsize},
   tick label style={font=\scriptsize},label style={font=\scriptsize}]
 \addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)(block,1.25)(off,0.35)};
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\subcaption{what propagates tracks goal/box/path-block edits, not a cosmetic off-path wall.}
+\subcaption{the value tracks edits to the source (goal/box) and the graph (path-block), not a cosmetic wall.}
 \label{fig:abl}
 \end{subfigure}
 \vspace{-3pt}
-\caption{\textbf{Planning by value propagation.} (a)~value propagation is multi-step and deepens with each
-thinking tick; (b)~\emph{what} propagates tracks task (goal/box) and physics (path-blocking) edits --- and
-the change reaches the agent and re-plans its move --- but a cosmetic off-path wall barely moves it.}
+\caption{\textbf{Value propagation on $G$.} (a)~value spreads along the edges, multi-step, deepening with each
+thinking tick; (b)~it tracks edits to the source (goal/box) and to the graph (a path-blocking wall) --- and
+the change reaches the agent node and re-plans its move --- but a cosmetic off-path wall barely moves it.}
 \end{figure}
 
 \vspace{-4pt}
 \section*{Conclusion}
 \vspace{-2pt}
-Planning emerges from RL as \emph{one step of generalized policy iteration split across the architecture}:
-amortized, graph-respecting \textbf{policy evaluation} in the recurrent loop (the long horizon compiled
-into the weights; a few refinement sweeps at inference) plus a one-step \textbf{lookahead improvement} at
-the head --- over latents that bind to states (\S1) and route along the transition graph $\NN$ (\S2). It
-is planning by value propagation: \emph{not} value iteration, \emph{not} successor-representation
-construction, and \emph{not} trajectory or tree search (only the immediate action is decodable).
+Planning emerges from RL as a \emph{dynamics on a learned graph}: the attention turns each board into a
+weighted graph whose \textbf{nodes bind} to states (\S1) and whose \textbf{edges follow} the move graph
+$\NN$ (\S2); the loop then \textbf{propagates value along the edges from the goal node} --- amortized policy
+evaluation (\S3) --- with a one-step lookahead at the head. It is \emph{not} value iteration (no $\max$ in
+the loop), \emph{not} a successor representation (the source is in the iterate), and \emph{not}
+trajectory/tree search (only the immediate action is decodable).
 
 \clearpage
 \appendix
 \section{Architecture and training}
 \vspace{-2pt}
-\textbf{Core.} A state-indexed attention-LSTM. The recurrent carry is, per stacked cell $d\in\{0,1,2\}$
-($D{=}3$), a cell memory $c_d$ and hidden $h_d$, each in $\mathbb{R}^{S\times C}$ over $S{=}H{\times}W{=}100$
-board squares with $C{=}32$ channels; $x\in\mathbb{R}^{S\times C}$ is a convolutional board embedding, fixed
-across ticks. Each thinking tick applies, for $d=0,1,2$ bottom-to-top (with $\mathrm{prev}$ the hidden of
-the cell below, or the top hidden from the previous tick for $d{=}0$), the weight-tied update
+\textbf{Core (graph form).} A state-indexed attention-LSTM. The nodes are the $S{=}H{\times}W{=}100$ board
+squares; the per-tick attention $A$ (below) is the learned weighted adjacency over them. The recurrent carry
+is, per stacked cell $d\in\{0,1,2\}$ ($D{=}3$), a cell memory $c_d$ and hidden $h_d$, each in
+$\mathbb{R}^{S\times C}$ ($C{=}32$); $x\in\mathbb{R}^{S\times C}$ is a convolutional board embedding, fixed
+across ticks. Each tick applies, for $d=0,1,2$ bottom-to-top (with $\mathrm{prev}$ the hidden of the cell
+below, or the top hidden from the previous tick for $d{=}0$), the weight-tied update
 \vspace{-3pt}
 \begin{align*}
 u &= \mathrm{RMSNorm}\!\big(h_d + [x;\mathrm{prev}]W_{\mathrm{in}}^d + b^d\big)\odot s^d,\\
@@ -185,10 +192,10 @@ c_d &\leftarrow c_d\,\sigma(g_f) + \tanh(g_i)\,\sigma(g_j),\qquad h_d \leftarrow
 \end{align*}
 \vspace{-6pt}
 
-Attention is \emph{dense} (no locality mask) with a sparse $1.5$-entmax normalizer; the aggregation
-$z=(A v)W_{\mathrm{out}}$ is a convex average (no $\max$). Up to $K{=}6$ ticks. The per-board readout pools
-$m=\mathrm{ReLU}\big((h_2+x)W_{\mathrm{dense}}+b\big)$ over the grid into actor logits $mW_a+b_a$ and a
-critic value $V=(mW_c+b_c)\,s_{\mathrm{head}}$.
+$A_{ss'}$ are the edge weights (row-stochastic; dense, no locality mask; sparse via 1.5-entmax); the
+aggregation $z=(A v)W_{\mathrm{out}}$ is a convex average over a node's edges (no $\max$). Up to $K{=}6$
+ticks. The per-board readout pools $m=\mathrm{ReLU}\big((h_2+x)W_{\mathrm{dense}}+b\big)$ over the nodes into
+actor logits $mW_a+b_a$ and a critic value $V=(mW_c+b_c)\,s_{\mathrm{head}}$.
 
 \textbf{Training.} IMPALA on Boxoban unfiltered-train, $300$M steps, $\gamma{=}0.97$, variable thinking
 depth $d\sim\mathcal{U}\{1..6\}$ per rollout (the learner replays the same depth). Online train solve
@@ -204,56 +211,56 @@ hidden state to $1.8\times10^{-7}$.
 \vspace{-2pt}
 Scripts are under \texttt{results/}; all on held-out \texttt{valid\_medium} at the $300$M checkpoint.
 
-\textbf{Step 1 --- binding.}
+\textbf{Step 1 --- binding (the nodes are the states).}
 \begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
 \item \textbf{Binding probe} (\texttt{interp\_planning\_d3.py}): linear probe $h(s)\!\to\!$ tile type,
 per-object balanced accuracy (chance $0.5$) --- wall/box/target/agent $=0.77/0.76/0.70/0.75$, flat over ticks.
 \end{itemize}
 
-\textbf{Step 2 --- the learned graph (connectivity along $\NN$).}
+\textbf{Step 2 --- the learned graph (edges follow $\NN$).}
 \begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
-\item \textbf{Recovery of $\NN$} (\texttt{interp\_planning\_d3.py}): attention mass on the wall-masked
-one-step move-neighbours vs uniform chance --- $7$--$13\times$; entmax support broad ($\sim$44--88 keys).
-\item \textbf{Through-walls} (\texttt{interp\_wall\_d3.py}): flip a floor cell to a wall at matched pixel
-distance; agent-latent influence for graph-far (blocked) vs graph-near (open) cells --- blocked
+\item \textbf{Recovery of $\NN$} (\texttt{interp\_planning\_d3.py}): edge weight on the wall-masked one-step
+move-neighbours vs uniform chance --- $7$--$13\times$; entmax support broad ($\sim$44--88 keys per node).
+\item \textbf{Through-walls} (\texttt{interp\_wall\_d3.py}): flip a floor node to a wall at matched pixel
+distance; agent-latent influence for graph-far (blocked) vs graph-near (open) nodes --- blocked
 $=0.38\times$ open, partial corr$(\text{infl},\text{graph}\!\mid\!\text{Euclid})=-0.32$.
-\item \textbf{Learned kernel} (\texttt{interp\_e4\_d3.py}): attention mass vs graph distance --- geometric
-decay $\rho{\approx}0.66$ (reach $\sim$3 hops), $34\%$ beyond one hop, $0.00$ to graph-unreachable cells,
-$+0.07$ directly on the goal cell.
+\item \textbf{Learned kernel} (\texttt{interp\_e4\_d3.py}): edge weight vs graph distance --- geometric decay
+$\rho{\approx}0.66$ (reach $\sim$3 hops), $34\%$ of weight beyond one hop, $0.00$ to graph-unreachable nodes,
+$+0.07$ directly to the goal node.
 \end{itemize}
 
-\textbf{Step 3 --- planning by value propagation.}
+\textbf{Step 3 --- value propagation on the graph.}
 \begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
-\item \textbf{No-max / stationary operator} (config + \texttt{interp\_e1\_d3.py}): trained config is
-\texttt{readout="softmax"} (convex average), \texttt{maxplus} off; $A$ is stationary and does not sharpen
-(top-1 mass ${\approx}0.16$, ${\sim}85$ keys, $\cos(A_t,A_{t-1})\!\to\!0.995$) $\Rightarrow$ evaluation, not iteration.
-\item \textbf{Reach compounds} (\texttt{interp\_e5\_d3.py}): perturb a cell $d$ hops away; agent-influence
-onset per tick --- far cells ($d{=}7$--$9$) arrive only after ${\sim}3$--$4$ ticks (from ${\approx}0$); horizon grows.
+\item \textbf{No-max / static operator} (config + \texttt{interp\_e1\_d3.py}): trained config is
+\texttt{readout="softmax"} (convex average), \texttt{maxplus} off; the edges $A$ are stationary and do not
+sharpen (top-1 mass ${\approx}0.16$, ${\sim}85$ keys, $\cos(A_t,A_{t-1})\!\to\!0.995$) $\Rightarrow$ evaluation, not iteration.
+\item \textbf{Reach compounds} (\texttt{interp\_e5\_d3.py}): perturb a node $d$ edges away; agent-influence
+onset per tick --- far nodes ($d{=}7$--$9$) arrive only after ${\sim}3$--$4$ ticks (from ${\approx}0$); horizon grows.
 \item \textbf{Bellman self-consistency} (\texttt{interp\_bellman\_d3.py}): optimality residual
 $|V-\max_a(r{+}\gamma V(s'))|/\mathrm{std}(V)$ at agent and greedy successors $0$--$3$ $=[0.19,0.25,0.25,0.22]$
 (low, flat) $\Rightarrow$ recursive fixed point.
 \item \textbf{Lookahead-consistency} (\texttt{interp\_lookahead\_d3.py}): policy agreement with
 $\arg\max_a[r_a{+}\gamma V(s'_a)]$ over its own value $=0.41$ (chance $0.25$), rising $0.34\!\to\!0.41$ with depth.
-\item \textbf{Reward-relabel} (\texttt{interp\_e2\_d3.py}): move the goal (keep $P$) vs a matched wall-flip
-(change $P$); far-field latent shift $0.35$ vs $0.22$ (ratio $1.55$) $\Rightarrow$ goal in the iterate
+\item \textbf{Reward-relabel} (\texttt{interp\_e2\_d3.py}): move the goal/source (keep edges) vs a matched
+wall-flip; far-node value shift $0.35$ vs $0.22$ (ratio $1.55$) $\Rightarrow$ source in the iterate
 (policy evaluation, not a successor representation).
 \item \textbf{Far-side interventions} (\texttt{interp\_e6b\_d3.py}): relocate goal/box far ---
 $\mathrm{corr}(\Delta V,-\Delta\text{dist})=+0.18/{+}0.16$; box impact $1.5\sigma>$ goal $1.0\sigma$.
-\item \textbf{Operator adaptation} (\texttt{interp\_e7\_d3.py}, \texttt{interp\_e7b\_d3.py}): $A$ is
-near-invariant under edits (row-change near/far ratio $1.1\times$; neighbours of a new wall keep attending to
-it) $\Rightarrow$ no routing re-wire.
-\item \textbf{Value content} (\texttt{interp\_e8\_d3.py}): value-projection norm $\|v\|$, wall/floor $=0.94$,
-floor$\to$wall flip ratio $1.06$ $\Rightarrow$ walls are not ``dead''.
+\item \textbf{Edge adaptation} (\texttt{interp\_e7\_d3.py}, \texttt{interp\_e7b\_d3.py}): the edges $A$ are
+near-invariant to a single injected edit (row-change near/far ratio $1.1\times$; neighbours of a new wall
+keep their edges to it) $\Rightarrow$ no per-tick re-wiring.
+\item \textbf{Node content} (\texttt{interp\_e8\_d3.py}): value-projection norm $\|v\|$, wall/floor $=0.94$,
+floor$\to$wall flip ratio $1.06$ $\Rightarrow$ wall nodes are not ``dead''.
 \item \textbf{New physics} (\texttt{interp\_e9\_d3.py}): a path-blocking wall lowers the value ($94\%$,
 $-1.3\sigma$) vs an off-path wall ($-0.35\sigma$); the effect builds over ticks $\Rightarrow$ the value
-adopts the new transition structure.
+adopts the new graph.
 \item \textbf{Reaches the agent + re-plans} (\texttt{interp\_e10\_d3.py}): a path-blocking wall outside the
-agent's view shifts the agent's \emph{own} latent $2.2\times$ an off-path wall (building over ticks) and
+agent's view shifts the agent's \emph{own} node latent $2.2\times$ an off-path wall (building over ticks) and
 changes its greedy action $3\times$ more often.
 \end{itemize}
 
-\noindent Together: the loop propagates a goal-directed value field through a fixed, graph-respecting kernel
-(policy evaluation); interventions show the value field tracks task (goal/box) and physics (wall) changes,
-reaches the agent, and re-plans --- by propagating value \emph{content}, not by re-routing.
+\noindent Together: the loop propagates a goal-sourced value field along a fixed, transition-respecting graph
+(policy evaluation); interventions show the value tracks edits to the source (goal/box) and the graph (walls),
+reaches the agent node, and re-plans --- by propagating value \emph{content}, not by re-wiring edges.
 
 \end{document}
