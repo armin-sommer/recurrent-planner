@@ -1,5 +1,5 @@
 \documentclass[11pt]{article}
-\usepackage[margin=1in]{geometry}
+\usepackage[margin=0.85in]{geometry}
 \usepackage{amsmath,amssymb}
 \usepackage{booktabs}
 \usepackage[hidelinks]{hyperref}
@@ -7,142 +7,152 @@
 \usepackage{tikz}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
+\usepackage{subcaption}
+\usepackage{titlesec}
+\usepackage{lastpage}
+\captionsetup{font=small}
+\titlespacing*{\section}{0pt}{5pt}{1pt}
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
+\setlength{\parskip}{2pt}
+\setlength{\parindent}{0pt}
 
 \newcommand{\NN}{\mathcal{N}}
 
-\title{\bf Planning by Value Propagation\\[2pt]
-\large A relational recurrent core learns amortized policy evaluation on Sokoban}
+\title{\vspace{-1.2em}\bf Planning by Value Propagation\\[2pt]
+\large Binding, a relational world model, and amortized policy evaluation on Sokoban}
 \author{Recurrent-Planner project}
-\date{\today}
+\date{\vspace{-0.6em}\today}
 
 \begin{document}
 \maketitle
+\vspace{-2.2em}
 
 \begin{abstract}
-\noindent Model-free RL on a state-indexed relational recurrent core induces \emph{planning}, and we
-identify the mechanism precisely: the recurrent ``thinking'' loop performs \textbf{multi-step value
-propagation} --- \textbf{amortized policy evaluation} of a goal-directed value field along the
-environment's transition graph $\NN$ --- and the policy is improved by a single one-step lookahead at
-the actor head. It is \emph{not} value iteration (the per-tick aggregation is a convex average, with no
-$\max$ over actions), \emph{not} a successor representation (the goal enters the iterate), and \emph{not}
-trajectory search (no multi-step plan is stored). On a 300M-step Sokoban model we show, causally and on
-held-out levels, that (i)~value propagation is multi-step and \emph{deepens with thinking}; (ii)~the
-per-tick operator is a learned, graph-respecting, goal-anchored kernel that \emph{generalizes} (not
-per-level memorization); and (iii)~information routes \emph{along} $\NN$, around walls. The relational
-structure is emergent --- no locality mask is imposed.
+\noindent Model-free RL on a state-indexed relational recurrent core induces \emph{planning}, via a
+three-step chain that emerges with \emph{no} locality mask: (1)~latent cells \textbf{bind} to environment
+states; (2)~their learned routing passes information along the one-step transition graph $\NN$ --- a
+\textbf{relational world model}; and (3)~the recurrent ``thinking'' loop \textbf{plans} by multi-step
+value propagation, i.e.\ \textbf{amortized policy evaluation} (not value iteration --- the aggregation is
+a convex average, with no $\max$ over actions; the improvement is a one-step lookahead at the actor head).
+All three are shown causally, on held-out levels, in a 300M-step Sokoban model.
 \end{abstract}
 
-\section{The model, and a mathematical model of one tick}
+\vspace{-0.8em}
+\section*{Setup}
+\vspace{-2pt}
+The core is a state-indexed attention-LSTM: each latent is the $C{=}32$ vector at a board square $s$ over
+$S{=}H{\times}W$ tokens. Per thinking tick every cell attends over the whole board (\emph{dense}, no mask;
+4 heads; sparse 1.5-entmax), aggregates neighbour values, and applies an LSTM gate. Depth $D{=}3$, up to
+$K{=}6$ ticks, trained 300M IMPALA steps.
 
-The core is a state-indexed attention-LSTM: each latent cell is the $C{=}32$-channel vector at a board
-square $s$ over $S{=}H{\times}W$ tokens. Per thinking tick every cell attends over the whole board (dense,
-4 heads, \emph{sparse} 1.5-entmax normalizer), aggregates neighbour values, and applies an LSTM gate;
-depth $D{=}3$, up to $K{=}6$ ticks, trained 300M IMPALA steps with \emph{no} locality mask. Latents bind
-to states (tile type is linearly decodable from $h(s)$ at $0.70$--$0.77$, chance $0.5$, flat over ticks).
+\section{Binding: the latents are the states}
+\vspace{-2pt}
+A linear probe recovers the tile type at square $s$ from its latent $h(s)$ well above chance for every
+object class, including the rare ones (box/target/agent are $1$--$4\%$ of squares). Binding is flat across
+ticks --- read from the input embedding, not built by the loop.
+\begin{center}\small
+\begin{tabular}{lcccc}
+\toprule
+ & wall & box & target & agent\\
+base rate & 0.69 & 0.04 & 0.04 & 0.01\\
+\midrule
+probe balanced acc.\ (chance 0.50) & 0.77 & 0.76 & 0.70 & 0.75\\
+\bottomrule
+\end{tabular}
+\end{center}
 
-Linearizing the value channel of one weight-tied tick gives the mechanism in closed form:
-\begin{equation}
-c \;\leftarrow\; \gamma_{\mathrm{eff}}\,A\,c + r_{\mathrm{eff}}
-\qquad\Longrightarrow\qquad
-c^\star=(I-\gamma_{\mathrm{eff}}A)^{-1}r_{\mathrm{eff}}=\sum_{i\ge0}(\gamma_{\mathrm{eff}}A)^{i}\,r_{\mathrm{eff}},
-\label{eq:resolvent}
-\end{equation}
-the discounted \textbf{policy-evaluation resolvent}. The entmax attention $A$ (row-stochastic, supported
-on $\NN$) plays $\gamma P^{\pi}$; the per-channel forget gate $\sigma(g_f)$ plays the discount; the
-input injection $[x;\text{prev}]W_{\mathrm{in}}$ plays the reward source $r$. Crucially the aggregation
-$z=(A\,v)\,W_{\mathrm{out}}=\mathbb{E}_{s'\sim A}[\cdot]$ is a \emph{convex average} --- there is
-\textbf{no $\max_a$} --- so the loop \emph{evaluates} a (fixed, near-greedy) policy. The $\max$
-(improvement) is a single $\arg\max_a[r_a+\gamma V(s'_a)]$ applied at the actor head. The loop thus
-realizes \emph{one step of generalized policy iteration}: evaluate in the loop, improve at the head.
-
-\section{Evidence}
-
-\subsection{Value propagation is multi-step and deepens with thinking}
-
-Perturbing a cell $d$ hops from the agent, its causal effect on the agent's latent \emph{arrives later
-for larger $d$} and builds up over ticks (Fig.~\ref{fig:reach}). A single tick reaches only $\sim$3 hops,
-yet cells $7$--$9$ hops away still influence the agent --- starting near zero and growing over $\sim$4
-ticks. Since one tick cannot span $8$ hops, the intermediate cells must relay the signal: the cells a
-latent pulls from are \emph{themselves} updated each tick, so reach \emph{compounds} (genuine multi-step
-iteration), filling the board within $\sim$3--4 ticks. Consistently, the converged value is a recursive
-Bellman fixed point (optimality residual$/\mathrm{std}(V)$ flat at $[0.19,0.25,0.25,0.22]$ over greedy
-successors $0$--$3$), and the policy's agreement with one-step value-lookahead rises with thinking
-($0.34\!\to\!0.41$; chance $0.25$).
+\section{A relational world model: routing along $\NN$}
+\vspace{-2pt}
+With no locality mask, the learned attention routes information along the one-step transition graph
+$\NN$: its mass concentrates on the (wall-masked) move-reachable neighbours at $7$--$13\times$ chance.
+The relation is \emph{causal} and respects walls --- a perturbation \emph{blocked} by a wall shifts the
+agent's latent only $0.38\times$ as much as an \emph{open} one at matched pixel distance
+(Fig.~\ref{fig:walls}; partial correlation of influence with graph-distance, controlling Euclidean,
+$=-0.32$). Information flows \emph{around} walls, so the latent relations implement the environment's
+transition model.
 
 \begin{figure}[h]\centering
 \begin{tikzpicture}
-\begin{axis}[width=12cm,height=5.2cm,xlabel={thinking tick},ylabel={agent $\lVert\Delta h\rVert$},
-  xmin=1,xmax=12,ymin=0,ymax=1.6,legend pos=south east,
-  tick label style={font=\footnotesize},label style={font=\small},legend style={font=\footnotesize}]
+\begin{axis}[ybar,width=8.4cm,height=3.9cm,symbolic x coords={open,blocked by wall},xtick=data,
+  ylabel={agent $\lVert\Delta h\rVert$},ymin=0,ymax=1.0,bar width=30pt,
+  nodes near coords,every node near coord/.append style={font=\footnotesize},
+  tick label style={font=\small},label style={font=\small}]
+\addplot[fill=teal!55,draw=teal!60] coordinates {(open,0.857)(blocked by wall,0.323)};
+\end{axis}\end{tikzpicture}
+\vspace{-4pt}
+\caption{\textbf{Routes around walls.} At matched pixel distance a wall-blocked perturbation influences the
+agent $0.38\times$ as much as an open one --- information flows along $\NN$, not through Euclidean space.}
+\label{fig:walls}
+\end{figure}
+
+\section{Planning: amortized policy evaluation (value propagation)}
+\vspace{-2pt}
+The loop plans over this world model by \emph{propagating value}. Linearizing the value channel of one
+weight-tied tick gives the mechanism in closed form:
+\vspace{-2pt}
+\[
+c \;\leftarrow\; \gamma_{\mathrm{eff}}\,A\,c + r_{\mathrm{eff}}
+\quad\Longrightarrow\quad
+c^\star=(I-\gamma_{\mathrm{eff}}A)^{-1}r_{\mathrm{eff}}=\sum_{i\ge0}(\gamma_{\mathrm{eff}}A)^{i}\,r_{\mathrm{eff}},
+\]
+the discounted \textbf{policy-evaluation resolvent}: the entmax attention $A$ (row-stochastic, on $\NN$)
+plays $\gamma P^{\pi}$, the forget gate $\sigma(g_f)$ the discount, the input injection the reward source
+$r$. The aggregation $z=(A v)W_{\mathrm{out}}=\mathbb{E}_{s'\sim A}[\cdot]$ is a \emph{convex average} ---
+no $\max_a$ --- so the loop \emph{evaluates}; the $\max$ (improvement) is a single
+$\arg\max_a[r_a+\gamma V(s'_a)]$ at the head.
+
+This propagation is \emph{multi-step and deepens with thinking}: a perturbation $d$ hops from the agent
+reaches it only after several ticks, building from $\approx0$ (Fig.~\ref{fig:reach}). One tick spans
+$\sim$3 hops, yet cells $7$--$9$ away still arrive --- so intermediate cells relay the signal: the cells a
+latent pulls from are \emph{themselves} updated, and reach \emph{compounds}. Where it pulls value from is
+a learned, graph-respecting, goal-anchored kernel that \emph{generalizes} (Fig.~\ref{fig:kernel}:
+geometric decay $\rho{\approx}0.66$, a third of the mass beyond one hop, $0$ through walls, $+0.07$ direct
+to the goal; it adapts causally to novel goal/wall edits --- not per-level memorization). The converged
+value is a recursive Bellman fixed point (optimality residual$/\mathrm{std}(V)$ flat at
+$[0.19,0.25,0.25,0.22]$ over greedy successors $0$--$3$); the policy increasingly matches one-step
+value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$); and relocating the goal reshapes the
+propagated field $1.55\times$ more than a matched transition change --- the goal is in the iterate
+(policy evaluation, not a reward-agnostic successor representation).
+
+\begin{figure}[h]
+\begin{subfigure}{0.5\textwidth}\centering
+\begin{tikzpicture}
+\begin{axis}[width=7.6cm,height=4.4cm,xlabel={thinking tick},ylabel={agent $\lVert\Delta h\rVert$},
+  xmin=1,xmax=12,ymin=0,ymax=1.6,legend pos=south east,legend style={font=\scriptsize},
+  tick label style={font=\scriptsize},label style={font=\footnotesize}]
 \addplot[mark=*,blue,thick] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
 \addplot[mark=square*,orange,thick] coordinates {(1,0.22)(2,0.48)(3,0.72)(4,0.85)(5,0.92)(6,0.97)(7,1.00)(8,0.99)(9,1.03)(10,1.03)(11,1.03)(12,1.07)};
 \addplot[mark=triangle*,red,thick] coordinates {(1,0.11)(2,0.20)(3,0.31)(4,0.42)(5,0.49)(6,0.51)(7,0.53)(8,0.57)(9,0.58)(10,0.64)(11,0.66)(12,0.69)};
 \legend{$d{=}1$,$d{=}5$,$d{=}9$}
-\end{axis}
-\end{tikzpicture}
-\caption{\textbf{Reach compounds with thinking.} Causal influence of a perturbation $d$ hops from the
-agent on the agent latent, per tick (300M, held-out levels). Distant cells start $\approx0$ and arrive
-only after several ticks $\Rightarrow$ value propagates multi-step, $\sim$3 hops per tick.}
+\end{axis}\end{tikzpicture}
+\vspace{-4pt}
+\subcaption{Reach compounds with thinking: far cells arrive only after several ticks (multi-step).}
 \label{fig:reach}
-\end{figure}
-
-\subsection{A learned, generalizable propagation algorithm}
-
-Where does a cell pull value \emph{from}? Not merely its neighbours: attention mass decays geometrically
-with \emph{graph} distance ($\rho\approx0.66$, effective reach $\sim$3 hops), with $34\%$ of mass beyond
-one hop, essentially \emph{zero} mass through walls, and a direct $\sim$$0.07$ link to the goal cell
-(Fig.~\ref{fig:kernel}). This single kernel is applied across unseen levels and adapts \emph{causally} to
-novel wall and goal edits rather than retrieving a per-level answer --- a generalizable value-propagation
-algorithm, not memorization. Relocating the goal reshapes the propagated latent more than a matched
-transition change ($1.55\times$), confirming the goal enters the iterate (policy evaluation), not a
-reward-agnostic successor representation.
-
-\begin{figure}[h]\centering
+\end{subfigure}\hfill
+\begin{subfigure}{0.5\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=12cm,height=5.2cm,xlabel={graph distance from cell (hops)},
-  ylabel={mean attention mass},xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=12pt,
-  xtick={0,1,2,3,4,5,6,7,8},tick label style={font=\footnotesize},label style={font=\small}]
+\begin{axis}[ybar,width=7.6cm,height=4.4cm,xlabel={graph distance (hops)},ylabel={mean attention mass},
+  xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=8pt,xtick={0,1,2,3,4,5,6,7,8},
+  tick label style={font=\scriptsize},label style={font=\footnotesize}]
 \addplot[fill=blue!55,draw=blue!60] coordinates {(0,0.007)(1,0.206)(2,0.098)(3,0.062)(4,0.047)(5,0.031)(6,0.024)(7,0.021)(8,0.018)};
-\end{axis}
-\end{tikzpicture}
-\caption{\textbf{The learned kernel.} Where each cell pulls value from: geometric decay in graph distance
-($\rho\approx0.66$), a third of the mass beyond one hop, $0.00$ mass through walls, and $+0.07$ directly
-to the goal cell. A wide, graph-respecting, goal-anchored kernel --- accelerated policy evaluation.}
+\end{axis}\end{tikzpicture}
+\vspace{-4pt}
+\subcaption{The learned kernel: geometric graph-distance decay, $0$ through walls, $+0.07$ to the goal.}
 \label{fig:kernel}
+\end{subfigure}
+\vspace{-3pt}
+\caption{\textbf{Planning by value propagation.} (a)~value propagation is multi-step and deepens with each
+thinking tick; (b)~it is a wide, graph-respecting, goal-anchored kernel --- accelerated policy evaluation.}
 \end{figure}
 
-\subsection{It respects the transition graph}
-
-The propagation is causally tied to $\NN$. A perturbation blocked by a wall moves the agent latent only
-$0.38\times$ as much as an open one at matched pixel distance (Fig.~\ref{fig:walls}; partial correlation
-of influence with graph-distance, controlling Euclidean, $=-0.32$). Information routes \emph{around}
-walls, along the transition graph --- and this emerges with no locality mask imposed.
-
-\begin{figure}[h]\centering
-\begin{tikzpicture}
-\begin{axis}[ybar,width=7.8cm,height=5.0cm,symbolic x coords={open,blocked},xtick=data,
-  ylabel={agent influence $\lVert\Delta h\rVert$},ymin=0,ymax=1.0,bar width=30pt,
-  nodes near coords,every node near coord/.append style={font=\footnotesize},
-  tick label style={font=\small},label style={font=\small}]
-\addplot[fill=teal!55,draw=teal!60] coordinates {(open,0.857)(blocked,0.323)};
-\end{axis}
-\end{tikzpicture}
-\caption{\textbf{Routes around walls.} At matched pixel distance, a perturbation blocked by a wall
-influences the agent $0.38\times$ as much as an open one --- information flows along $\NN$, not through
-Euclidean space.}
-\label{fig:walls}
-\end{figure}
-
-\section{What it is, and what it is not}
-
-The thinking loop is \textbf{amortized, graph-respecting policy evaluation}: it propagates a goal-directed
-value field along $\NN$ via a fixed, wide, weight-tied operator (the attention is stationary and does not
-sharpen; effective horizon $\sim$9 ticks, so the long range is compiled into the weights and the loop
-runs a few refinement sweeps), and the policy is improved by a single lookahead at the head. It is
-therefore planning by \textbf{value propagation} --- definitively \emph{not} value iteration (no
-$\max_a$ in the loop), \emph{not} successor-representation construction (the goal is in the iterate), and
-\emph{not} trajectory or tree search (only the immediate action $a_0$ is decodable; $a_1{\dots}a_5$ sit
-at chance). Planning emerges from RL, over latents that bind to states and route along the environment's
-transition graph.
+\vspace{-4pt}
+\section*{Conclusion}
+\vspace{-2pt}
+Planning emerges from RL as \emph{one step of generalized policy iteration split across the architecture}:
+amortized, graph-respecting \textbf{policy evaluation} in the recurrent loop (the long horizon compiled
+into the weights; a few refinement sweeps at inference) plus a one-step \textbf{lookahead improvement} at
+the head --- over latents that bind to states (\S1) and route along the transition graph $\NN$ (\S2). It
+is planning by value propagation: \emph{not} value iteration, \emph{not} successor-representation
+construction, and \emph{not} trajectory or tree search (only the immediate action is decodable).
 
 \end{document}
