@@ -86,7 +86,7 @@ def main(cp_dir, n_boards, dmax, K):
 
     # absolute influence matrix (rows=d, cols=tick) -- does far-d influence appear only late?
     print(f"\n  absolute ||dh(agent)|| by (d x tick):")
-    print(f"     {'d\\\\t':>4} " + " ".join(f"{t+1:>5}" for t in range(K)))
+    print(f"     {'d/t':>4} " + " ".join(f"{t+1:>5}" for t in range(K)))
     for d in sorted(mat):
         print(f"     {d:>4} " + " ".join(f"{mat[d][t]:5.2f}" for t in range(K)))
 
