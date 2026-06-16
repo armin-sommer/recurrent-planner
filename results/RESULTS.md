@@ -3,7 +3,7 @@
 Post-hoc **thinking-step sweep** (extra thinking ticks 0→12) on the 200M-step checkpoints,
 evaluated on **valid_medium** (held-out, medium difficulty — the generalization benchmark) and
 **train_unfiltered** (training distribution). 1000 levels/tick. `local_max` is evaluated at its
-**120M peak** (its 200M run oscillated — see handoff); `attn_masked` excluded (collapsed ~50M).
+**120M peak** (its 200M run oscillated); `attn_masked` excluded (collapsed ~50M).
 
 Data: [`data/thinking.csv`](data/thinking.csv) · Figures: [`figures/`](figures) · Pipeline: `parse_pkls.py`, `plot.py`.
 Raw artifacts (gitignored): `checkpoints/all_arms/all_ckpts.tar` (274 ckpts, all arms), `data/eval_pkls.tar` (22 metric pkls).
@@ -38,5 +38,7 @@ Raw artifacts (gitignored): `checkpoints/all_arms/all_ckpts.tar` (274 ckpts, all
 
 **Takeaway:** the masked-vs-dense thesis is supported behaviourally **in the (strong) attention instance**, not in the (weak) cellwise one. The decisive *mechanism* test — does masked compute a localized, propagating plan/value frontier that dense lacks — is the probe experiments (decodability → frontier-per-tick → causal patching), next.
 
-## Pending
-- Mechanism probes (see `AGENT_HANDOFF.md`), on a cheap single GPU from the pulled weights.
+## Mechanism probes (done)
+The decisive mechanism tests — does the core compute a localized, propagating value/plan frontier? — are in
+the **D=3 entmax interpretability suite**: see [`README.md`](README.md). Headline: planning emerges as
+**amortized policy evaluation (value propagation)** along a fixed, transition-respecting attention graph.

@@ -5,6 +5,14 @@ This repository contains training code for the paper ["Planning behavior in a re
 
 The [learned-planner repository](https://github.com/AlignmentResearch/learned-planner) lets you download and use the trained neural networks. If you just want to do interpretability, you should go there.
 
+## Interpretability experiments (this fork)
+
+This fork adds mechanistic-interpretability probes for a relational recurrent core (a state-indexed
+attention-LSTM), showing that **planning emerges as amortized policy evaluation — value propagation along a
+learned, transition-respecting attention graph**. The experiments and a reproduction guide live in
+[`results/README.md`](results/README.md); the writeup is
+[`writeup/planning_emergence.tex`](writeup/planning_emergence.tex).
+
 ## :rocket: Running Training
 
 First, clone the repo with:

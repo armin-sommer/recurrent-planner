@@ -152,3 +152,7 @@ k8s_copy/results/checkpoints/
 # stale/extra pulled checkpoints (keep local, do not track)
 results/checkpoints/local_max_peak/
 .claude/
+
+# local-only: working notes (contain infra/SSH details) — keep on disk, never commit
+AGENT_HANDOFF.md
+RUNBOOK_next_session.md
