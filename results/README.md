@@ -63,12 +63,18 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
   decodable (~0.44, chance 0.25), ~61% of nodes point goalward, and the decoded action **equals the value
   gradient** (move toward the higher-value neighbour) — the plan is the value's gradient, present wherever
   value is, not a stored action sequence (contrast `interp_planq`, which finds the executed trajectory is not stored).
-- `interp_e12_d3.py` — does that policy field **expand outward** over thinking ticks? **No.** Per-node action
-  accuracy and goalward-fraction are above chance but **flat across all 8 ticks at every distance-to-goal
-  band** — onset simultaneous, not staggered near→far (confirmed at 192 and 512 boards on the 300M ckpt; the
-  only non-flat signal is a faint far-band drift, d9+ accuracy/goalward +0.06 over ticks, near-band slightly
-  negative — far too small for a wavefront). The action-gradient field is amortized by tick 1; what thinking
-  grows is value **magnitude/reach** (E5/E8/E10), not spatial action coverage.
+- `interp_e12_d3.py` — does the *per-cell decoded* field **expand outward** as a spatial frontier over ticks?
+  **No** — per-node decodability is flat across all 8 ticks at every distance band (onset simultaneous, not
+  staggered near→far; 192 and 512 boards). This is the **expected** signature for a *dense* core (every cell
+  attends globally each tick → no ring-by-ring wavefront; ticks **sharpen** value, they don't spread it). Note
+  this measures *decodability of the field refit per tick* — **not** the model's decision; for that see E13.
+- `interp_e13_d3.py` — **the model's own decision over ticks** (the direct value→action test). Applying the
+  actual actor/critic head to each tick's hidden state: thinking **changes** the decision on **~35%** of
+  boards (tick-1 action ≠ settled) and **improves** it toward goalward, **+8.6pp** overall and **most on the
+  farthest boards** (d13+: **+0.15**) — exactly the planning prediction (far goals need more propagation). The
+  state-value contracts (`|ΔV|` 0.72→0.23) and the decision margin sharpens (1.6→3.3). So value propagation
+  **does** drive action selection — reconciling E12 (flat field *decodability*, not the decision) with E10
+  (causal: injected value-change flips the agent's move) and the behavioral thinking-curve.
 - `interp_e3_d3.py` — superposition / no-kinks check (behavioral confirmation of no-max).
 - `thinking_curve_vardepth.py` — solve rate vs inner thinking depth (the `n_active` sweep).
 
