@@ -16,6 +16,8 @@
 \titleformat{\section}{\normalfont\large\bfseries}{\thesection}{0.6em}{}
 \setlength{\parskip}{2pt}
 \setlength{\parindent}{0pt}
+\setlength{\abovedisplayskip}{3pt}\setlength{\belowdisplayskip}{3pt}
+\setlength{\abovedisplayshortskip}{1pt}\setlength{\belowdisplayshortskip}{1pt}
 
 \newcommand{\NN}{\mathcal{N}}
 
@@ -84,16 +86,15 @@ board-specific adjacency. What \emph{flows} on this graph is \S3.
 
 \begin{figure}[h]\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=9.6cm,height=2.9cm,xlabel={graph distance between nodes (hops)},ylabel={mean edge weight},
+\begin{axis}[ybar,width=9.6cm,height=2.1cm,xlabel={graph distance between nodes (hops)},ylabel={mean edge weight},
   xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=10pt,xtick={0,1,2,3,4,5,6,7,8},
   tick label style={font=\footnotesize},label style={font=\small}]
 \addplot[fill=blue!55,draw=blue!60] coordinates {(0,0.007)(1,0.206)(2,0.098)(3,0.062)(4,0.047)(5,0.031)(6,0.024)(7,0.021)(8,0.018)};
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\caption{\textbf{The learned graph.} Edge weight (a node's attention mass) vs graph distance to the target
-node: geometric decay ($\rho{\approx}0.66$, reach $\sim$3 hops), ${\sim}0$ weight across walls, $+0.07$ to the
-goal node --- a transition-respecting adjacency, re-derived per board (causally confirmed: a wall-blocked
-node influences the agent $0.38\times$ a graph-near one).}
+\caption{\textbf{The learned graph.} Edge weight vs graph distance to the target node: geometric decay
+($\rho{\approx}0.66$, reach $\sim$3 hops), ${\sim}0$ across walls, $+0.07$ to the goal --- a
+transition-respecting adjacency, re-derived per board.}
 \label{fig:kernel}
 \end{figure}
 
@@ -114,63 +115,74 @@ edges --- no $\max$ --- so the loop \emph{evaluates}; the $\max$ (improvement) i
 $\arg\max_a[r_a+\gamma V(s'_a)]$ at the actor head.
 
 The propagation is \emph{multi-step and deepens with thinking}: a perturbation $d$ edges from the agent
-reaches its node only after several ticks, building from $\approx0$ (Fig.~\ref{fig:reach}). One tick spans
-$\sim$3 edges, yet nodes $7$--$9$ away still arrive --- the intermediate nodes relay the signal, so reach
-\emph{compounds} along $G$. The converged value is a recursive Bellman fixed point (optimality
-residual$/\mathrm{std}(V)$ flat at $[0.19,0.25,0.25,0.22]$ over greedy successors $0$--$3$); the policy
-increasingly matches one-step value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$).
+reaches its node only after several ticks, building from $\approx0$ (Fig.~\ref{fig:reach}); one tick spans
+$\sim$3 edges, yet nodes $7$--$9$ away still arrive via intermediate relays --- reach \emph{compounds} along $G$. The converged value is a recursive Bellman fixed point (optimality
+residual$/\mathrm{std}(V)$ low and flat over greedy successors $0$--$3$), and the policy increasingly matches
+one-step value-lookahead as it thinks ($0.34{\to}0.41$, chance $0.25$).
 
 \paragraph{The value tracks edits to the source and the graph, and re-plans.} Causal interventions confirm a
 genuine policy-evaluation field (Fig.~\ref{fig:abl}). Moving the goal (the \emph{source} node) shifts the
-value in the resolvent-predicted direction ($\mathrm{corr}(\Delta V,-\Delta\text{dist})={+}0.18/{+}0.16$ for
-goal/box; a box move more, $1.5\sigma$ vs $1.0\sigma$). Adding a wall \emph{edits the graph}: a wall that
-lengthens the agent's path lowers the value ($94\%$, $-1.3\sigma$ vs $-0.35\sigma$ for an off-path wall), the
+value in the resolvent-predicted direction ($\mathrm{corr}(\Delta V,-\Delta\text{dist}){>}0$, a box move
+more). Adding a wall \emph{edits the graph}: a wall that
+lengthens the agent's path lowers the value ($-1.3\sigma$ vs $-0.35\sigma$ for an off-path wall), the
 effect \emph{builds over ticks}, reaches the agent's \emph{own} node ($2.2\times$ off-path) and re-plans its
 move ($3\times$ a cosmetic wall). The value re-forms by propagating the consequence as \emph{content} along
-$G$ (the edges are re-derived from the board, not re-routed tick-to-tick).
+$G$, not by re-routing edges. Reading the model's \emph{own}
+head per tick confirms the loop drives the \emph{decision}: the action \emph{changes} on $35\%$ of boards and
+grows more goalward as value converges ($0.52\!\to\!0.60$, chance $0.25$), the gain largest where the goal is
+farthest (Fig.~\ref{fig:decide}, $+0.15$ at distance ${\ge}13$) --- the converging value re-ranks the head's logits.
 
 \begin{figure}[h]
-\begin{subfigure}{0.5\textwidth}\centering
+\begin{subfigure}{0.32\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[width=7.4cm,height=3.0cm,xlabel={thinking tick},ylabel={agent $\lVert\Delta h\rVert$},
-  xmin=1,xmax=12,ymin=0,ymax=1.65,legend pos=south east,legend style={font=\tiny},
-  tick label style={font=\tiny},label style={font=\scriptsize}]
-\addplot[mark=*,blue,thick,mark size=1pt] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
-\addplot[mark=square*,orange,thick,mark size=1pt] coordinates {(1,0.22)(2,0.48)(3,0.72)(4,0.85)(5,0.92)(6,0.97)(7,1.00)(8,0.99)(9,1.03)(10,1.03)(11,1.03)(12,1.07)};
-\addplot[mark=triangle*,red,thick,mark size=1pt] coordinates {(1,0.11)(2,0.20)(3,0.31)(4,0.42)(5,0.49)(6,0.51)(7,0.53)(8,0.57)(9,0.58)(10,0.64)(11,0.66)(12,0.69)};
+\begin{axis}[width=4.9cm,height=2.1cm,xlabel={tick},ylabel={agent $\lVert\Delta h\rVert$},
+  xmin=1,xmax=12,ymin=0,ymax=1.65,legend pos=south east,legend style={font=\tiny,inner sep=0.7pt},
+  tick label style={font=\tiny},label style={font=\tiny},xlabel near ticks,ylabel near ticks]
+\addplot[mark=*,blue,thick,mark size=0.6pt] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
+\addplot[mark=square*,orange,thick,mark size=0.6pt] coordinates {(1,0.22)(2,0.48)(3,0.72)(4,0.85)(5,0.92)(6,0.97)(7,1.00)(8,0.99)(9,1.03)(10,1.03)(11,1.03)(12,1.07)};
+\addplot[mark=triangle*,red,thick,mark size=0.6pt] coordinates {(1,0.11)(2,0.20)(3,0.31)(4,0.42)(5,0.49)(6,0.51)(7,0.53)(8,0.57)(9,0.58)(10,0.64)(11,0.66)(12,0.69)};
 \legend{$d{=}1$,$d{=}5$,$d{=}9$}
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\subcaption{value reaches a node $d$ edges away only after several ticks --- propagation compounds along $G$.}
+\subcaption{value reaches a $d$-hop node only after several ticks.}
 \label{fig:reach}
 \end{subfigure}\hfill
-\begin{subfigure}{0.5\textwidth}\centering
+\begin{subfigure}{0.32\textwidth}\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=7.4cm,height=3.0cm,symbolic x coords={goal,box,block,off},xtick=data,
-  ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.7,bar width=12pt,
-  nodes near coords,every node near coord/.append style={font=\scriptsize},
-  tick label style={font=\scriptsize},label style={font=\scriptsize}]
+\begin{axis}[ybar,width=4.9cm,height=2.1cm,symbolic x coords={goal,box,block,off},xtick=data,
+  ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.85,bar width=6pt,
+  nodes near coords,every node near coord/.append style={font=\tiny},
+  tick label style={font=\tiny},label style={font=\tiny},ylabel near ticks]
 \addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)(block,1.25)(off,0.35)};
 \end{axis}\end{tikzpicture}
 \vspace{-4pt}
-\subcaption{the value tracks edits to the source (goal/box) and the graph (path-block), not a cosmetic wall.}
+\subcaption{value tracks source/graph edits, not a cosmetic wall.}
 \label{fig:abl}
+\end{subfigure}\hfill
+\begin{subfigure}{0.32\textwidth}\centering
+\begin{tikzpicture}
+\begin{axis}[ybar,width=4.9cm,height=2.1cm,symbolic x coords={1-3,4-7,8-12,$\ge$13},xtick=data,
+  ylabel={$\Delta$ goalward (t1$\to$K)},ymin=0,ymax=0.19,bar width=5pt,xlabel={agent$\to$goal dist},
+  nodes near coords,every node near coord/.append style={font=\tiny,/pgf/number format/.cd,fixed,fixed zerofill,precision=2},
+  tick label style={font=\tiny},label style={font=\tiny},xlabel near ticks,ylabel near ticks]
+\addplot[fill=violet!60,draw=violet!65] coordinates {(1-3,0.10)(4-7,0.07)(8-12,0.08)($\ge$13,0.15)};
+\end{axis}\end{tikzpicture}
+\vspace{-4pt}
+\subcaption{decision turns goalward over ticks, most when far.}
+\label{fig:decide}
 \end{subfigure}
 \vspace{-3pt}
-\caption{\textbf{Value propagation on $G$.} (a)~value spreads along the edges, multi-step, deepening with each
-thinking tick; (b)~it tracks edits to the source (goal/box) and to the graph (a path-blocking wall) --- and
-the change reaches the agent node and re-plans its move --- but a cosmetic off-path wall barely moves it.}
+\caption{\textbf{Value propagation drives the decision on $G$.} Value spreads along edges (a), tracks
+source/graph edits and re-plans (b), and turns the decision goalward as it converges --- most when far (c).}
 \end{figure}
 
 \vspace{-4pt}
 \section*{Conclusion}
 \vspace{-2pt}
-Planning emerges from RL as a \emph{dynamics on a learned graph}: the attention turns each board into a
-weighted graph whose \textbf{nodes bind} to states (\S1) and whose \textbf{edges follow} the move graph
-$\NN$ (\S2); the loop then \textbf{propagates value along the edges from the goal node} --- amortized policy
-evaluation (\S3) --- with a one-step lookahead at the head. It is \emph{not} value iteration (no $\max$ in
-the loop), \emph{not} a successor representation (the source is in the iterate), and \emph{not}
-trajectory/tree search (only the immediate action is decodable).
+Planning emerges from RL as a \emph{dynamics on a learned graph}: attention binds \textbf{nodes} to states
+(\S1), shapes \textbf{edges} along the move graph $\NN$ (\S2), and the loop \textbf{propagates value from the
+goal node} --- policy evaluation with a one-step lookahead at the head (\S3). Not value iteration (no $\max$),
+a successor representation (source in the iterate), or tree search (only the immediate action decodes).
 
 \clearpage
 \appendix
@@ -247,20 +259,22 @@ wall-flip; far-node value shift $0.35$ vs $0.22$ (ratio $1.55$) $\Rightarrow$ so
 \item \textbf{Far-side interventions} (\texttt{interp\_e6b\_d3.py}): relocate goal/box far ---
 $\mathrm{corr}(\Delta V,-\Delta\text{dist})=+0.18/{+}0.16$; box impact $1.5\sigma>$ goal $1.0\sigma$.
 \item \textbf{Edge adaptation} (\texttt{interp\_e7\_d3.py}, \texttt{interp\_e7b\_d3.py}): the edges $A$ are
-near-invariant to a single injected edit (row-change near/far ratio $1.1\times$; neighbours of a new wall
-keep their edges to it) $\Rightarrow$ no per-tick re-wiring.
-\item \textbf{Node content} (\texttt{interp\_e8\_d3.py}): value-projection norm $\|v\|$, wall/floor $=0.94$,
-floor$\to$wall flip ratio $1.06$ $\Rightarrow$ wall nodes are not ``dead''.
-\item \textbf{New physics} (\texttt{interp\_e9\_d3.py}): a path-blocking wall lowers the value ($94\%$,
-$-1.3\sigma$) vs an off-path wall ($-0.35\sigma$); the effect builds over ticks $\Rightarrow$ the value
-adopts the new graph.
-\item \textbf{Reaches the agent + re-plans} (\texttt{interp\_e10\_d3.py}): a path-blocking wall outside the
-agent's view shifts the agent's \emph{own} node latent $2.2\times$ an off-path wall (building over ticks) and
-changes its greedy action $3\times$ more often.
+near-invariant to a single injected edit (row-change near/far ratio $1.1\times$) $\Rightarrow$ no re-wiring;
+and \textbf{node content} (\texttt{interp\_e8\_d3.py}) value-projection norm wall/floor $=0.94$ (flip ratio
+$1.06$) $\Rightarrow$ wall nodes are not ``dead''.
+\item \textbf{New physics, reaches the agent + re-plans} (\texttt{interp\_e9\_d3.py},
+\texttt{interp\_e10\_d3.py}): a path-blocking wall lowers the value ($94\%$, $-1.3\sigma$) vs an off-path wall
+($-0.35\sigma$), the effect builds over ticks, shifts the agent's \emph{own} node latent $2.2\times$ off-path,
+and changes its greedy action $3\times$ more often $\Rightarrow$ the value adopts the new graph and re-plans.
+\item \textbf{Decision over ticks} (\texttt{interp\_e13\_d3.py}): reading the model's own head per tick (512
+boards), the action changes on $35\%$ of boards and grows more goalward ($0.52\!\to\!0.60$, chance $0.25$;
+per agent$\to$goal distance band $+0.10/{+}0.07/{+}0.08/{+}0.15$, largest on the farthest) as value contracts
+($|\Delta V|\,0.72\!\to\!0.23$) and the decision margin sharpens ($1.6\!\to\!3.3$).
 \end{itemize}
 
 \noindent Together: the loop propagates a goal-sourced value field along a fixed, transition-respecting graph
-(policy evaluation); interventions show the value tracks edits to the source (goal/box) and the graph (walls),
-reaches the agent node, and re-plans --- by propagating value \emph{content}, not by re-wiring edges.
+(policy evaluation); the value tracks edits to the source (goal/box) and the graph (walls), reaches the agent
+node, and re-plans; and the decision grows more goalward as that value converges --- propagating value
+\emph{content}, not re-wiring edges.
 
 \end{document}
