@@ -41,8 +41,11 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 ## Experiments (by thesis step)
 
 **Step 1 — binding (the latents are the states)**
-- `planning.py` — linear probe `h(s)→tile type` (per-object balanced accuracy) + recovery-of-`N`
-  + per-tick plan probes. `--self-test` validates the recompute.
+- `planning.py` — linear probe `h(s)→tile type` + recovery-of-`N` (routing) + per-tick plan probes.
+  `--self-test` validates the recompute. (Its Q1 prints *raw* 5-class accuracy, chance ≈0.69.)
+- `binding_balanced.py` — the headline **per-object balanced** binding accuracy (chance 0.50), the metric the
+  writeup reports: wall/box/target/agent `= 0.74/0.73/0.72/0.78` at the 300M checkpoint, flat across ticks —
+  every object class, including the rare movable ones, is decodable from a single cell.
 
 **Step 2 — the learned graph (connectivity along `N`)**
 - `e4.py` — the learned kernel: attention mass vs **graph** distance (geometric decay `ρ≈0.66`,

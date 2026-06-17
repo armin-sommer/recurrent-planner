@@ -67,7 +67,7 @@ node features \emph{are} the states.
  & wall & box & target & agent\\
 base rate & 0.69 & 0.04 & 0.04 & 0.01\\
 \midrule
-probe balanced acc.\ (chance 0.50) & 0.77 & 0.76 & 0.70 & 0.75\\
+probe balanced acc.\ (chance 0.50) & 0.74 & 0.73 & 0.72 & 0.78\\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -226,7 +226,7 @@ Scripts are under \texttt{experiments/interp/}; all on held-out \texttt{valid\_m
 \textbf{Step 1 --- binding (the nodes are the states).}
 \begin{itemize}[leftmargin=1.4em,itemsep=1pt,topsep=2pt]
 \item \textbf{Binding probe} (\texttt{planning.py}): linear probe $h(s)\!\to\!$ tile type,
-per-object balanced accuracy (chance $0.5$) --- wall/box/target/agent $=0.77/0.76/0.70/0.75$, flat over ticks.
+per-object balanced accuracy (chance $0.5$) --- wall/box/target/agent $=0.74/0.73/0.72/0.78$, flat over ticks.
 \end{itemize}
 
 \textbf{Step 2 --- the learned graph (edges follow $\NN$).}
