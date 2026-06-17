@@ -17,9 +17,11 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 
 1. **Environment:** `bash build_env_pod2.sh` (or `make local-install`) — py3.10 venv (uv), jax cuda12,
    gym-sokoban submodule. Needs the Boxoban levels (see the top-level `README.md`) and a Sokoban cache.
-2. **Checkpoint:** a 140M-step checkpoint is included at
-   [`checkpoints/cp_139991040/`](checkpoints/cp_139991040) (`model` + `cfg.json`, SHA-verified). Or train to
-   300M with the config above. Load via `cleanba.cleanba_impala.load_train_state(Path(cp_dir), env_cfg=…)`.
+2. **Checkpoints:** the full 18-checkpoint training ladder (≈2M→300M steps) is included under
+   [`checkpoints/`](.) as `cp_001996800/ … cp_299996160/` (each `model` + `cfg.json`, all md5-distinct). The
+   **300M final** is [`checkpoints/cp_299996160/`](checkpoints/cp_299996160) and the **140M** is
+   [`checkpoints/cp_139991040/`](checkpoints/cp_139991040). Load via
+   `cleanba.cleanba_impala.load_train_state(Path(cp_dir), env_cfg=…)`. (Probes below were run on the 300M.)
 3. **Run a probe** (GPU; cap memory with
    `XLA_PYTHON_CLIENT_PREALLOCATE=false XLA_PYTHON_CLIENT_MEM_FRACTION=0.3`):
    ```sh
@@ -57,6 +59,16 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 - `interp_e8_d3.py` — value-projection norm by tile + floor→wall flip (are wall cells "dead"? no).
 - `interp_e9_d3.py` — does the value field adopt new physics? (a path-blocking wall lowers `V`).
 - `interp_e10_d3.py` — does a wall's value-change reach the agent's square + re-plan its action?
+- `interp_e11_d3.py` — the **decodable plan as a policy field**: per-node greedy action `h(s)→dir` is
+  decodable (~0.44, chance 0.25), ~61% of nodes point goalward, and the decoded action **equals the value
+  gradient** (move toward the higher-value neighbour) — the plan is the value's gradient, present wherever
+  value is, not a stored action sequence (contrast `interp_planq`, which finds the executed trajectory is not stored).
+- `interp_e12_d3.py` — does that policy field **expand outward** over thinking ticks? **No.** Per-node action
+  accuracy and goalward-fraction are above chance but **flat across all 8 ticks at every distance-to-goal
+  band** — onset simultaneous, not staggered near→far (confirmed at 192 and 512 boards on the 300M ckpt; the
+  only non-flat signal is a faint far-band drift, d9+ accuracy/goalward +0.06 over ticks, near-band slightly
+  negative — far too small for a wavefront). The action-gradient field is amortized by tick 1; what thinking
+  grows is value **magnitude/reach** (E5/E8/E10), not spatial action coverage.
 - `interp_e3_d3.py` — superposition / no-kinks check (behavioral confirmation of no-max).
 - `thinking_curve_vardepth.py` — solve rate vs inner thinking depth (the `n_active` sweep).
 
