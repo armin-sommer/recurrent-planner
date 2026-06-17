@@ -9,9 +9,11 @@ The [learned-planner repository](https://github.com/AlignmentResearch/learned-pl
 
 This fork adds mechanistic-interpretability probes for a relational recurrent core (a state-indexed
 attention-LSTM), showing that **planning emerges as amortized policy evaluation — value propagation along a
-learned, transition-respecting attention graph**. The experiments and a reproduction guide live in
-[`results/README.md`](results/README.md); the writeup is
-[`writeup/planning_emergence.tex`](writeup/planning_emergence.tex).
+learned, transition-respecting attention graph**. The experiment code lives in
+[`experiments/interp/`](experiments/interp) (with a reproduction guide in its
+[`README.md`](experiments/interp/README.md)), the weights it runs on are in [`checkpoints/`](checkpoints), and
+the writeup is [`writeup/planning_emergence.tex`](writeup/planning_emergence.tex). The earlier behavioral
+thinking-curve sweep is in [`results/`](results).
 
 ## :rocket: Running Training
 

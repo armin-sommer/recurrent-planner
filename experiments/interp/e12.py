@@ -9,7 +9,7 @@ test accuracy + goalward-fraction binned by graph-distance-to-goal, per tick.
   expanding frontier : near bands high early; far bands rise, with LATER onset  (accuracy front moves out)
   static field       : all bands ~flat across ticks
 
-  python -m results.interp_e12_d3 --ckpt <cp_dir> --boards 192 --ticks 8
+  python -m experiments.interp.e12 --ckpt <cp_dir> --boards 192 --ticks 8
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, greedy_dir, WALL, TARGET
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, greedy_dir, WALL, TARGET
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 

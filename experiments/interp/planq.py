@@ -12,15 +12,15 @@ from the policy READOUT at each thinking tick on the INITIAL board, per horizon.
 Readout per tick = relu((top_h[k] + embed).flat @ W_dense + b)  -- exactly what the actor head reads
 (IdentityNorm in this lineage). Probes are ridge-LSQ (decodability TRENDS, same split across ticks).
 
-  python -m results.interp_planq_d3 --ckpt <cp_dir> --boards 512 --horizon 6
+  python -m experiments.interp.planq --ckpt <cp_dir> --boards 512 --horizon 6
 """
 from __future__ import annotations
 import argparse, dataclasses
 import numpy as np
 import jax, jax.numpy as jnp
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_search_d3 import greedy_rollout
-from results.interp_plan import lin_acc
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.search import greedy_rollout
+from experiments.interp.plan import lin_acc
 
 
 def main(cp_dir, n_boards, H):

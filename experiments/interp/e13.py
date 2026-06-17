@@ -15,7 +15,7 @@ distance (planning should matter more when the goal is far, where value must pro
 If the action changes over ticks and gets more goalward (esp. on far boards), value propagation DOES drive
 action selection -- the point E12 could not see.
 
-  python -m results.interp_e13_d3 --ckpt <cp_dir> --boards 512 --ticks 8
+  python -m experiments.interp.e13 --ckpt <cp_dir> --boards 512 --ticks 8
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -23,9 +23,9 @@ from pathlib import Path
 import numpy as np
 import jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, greedy_dir, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, greedy_dir, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 BANDS = [(1, 3), (4, 7), (8, 12), (13, 99)]

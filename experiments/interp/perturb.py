@@ -15,7 +15,7 @@ ONSET shape; the arrival tick (first k reaching 50% of final) vs d is the signat
 NB: the conv embed has a ~7x7 receptive field, so for d>=5 the agent's embed is UNAFFECTED by the flip --
 any agent-cell influence there must arrive via attention propagation. Focus the verdict on d>=5.
 
-  python -m results.interp_perturb_d3 --ckpt <cp_dir> --boards 256 --dmax 9
+  python -m experiments.interp.perturb --ckpt <cp_dir> --boards 256 --dmax 9
 """
 from __future__ import annotations
 
@@ -25,9 +25,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, AGENT
 
 
 def main(cp_dir, n_boards, dmax):

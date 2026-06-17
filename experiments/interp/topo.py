@@ -13,7 +13,7 @@ We deliberately sample cells that are "walled off" (graph >> euclid) as well as 
 the two distances are decorrelated enough to separate. Also reports the influence-vs-graph-distance onset
 matrix (the propagation LAW: ~d serial, ~log d parallel-doubling, or flat global).
 
-  python -m results.interp_topo_d3 --ckpt <cp_dir> --boards 256
+  python -m experiments.interp.topo --ckpt <cp_dir> --boards 256
 """
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, AGENT
 
 
 def main(cp_dir, n_boards):

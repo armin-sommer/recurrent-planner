@@ -22,7 +22,7 @@ per-tick hidden (top_h) and per-tick attention operators (attn) from the crash-f
   v_{t+1} ~ A_t v_t (own operator)       high R^2, coeff in (0,1) high R^2 (+ max kink)    low / coeff~0
   convergence rho of ||dh||              <1, rho << 0.97          <1                       ~0 after tick ~1
 
-  python -m results.interp_e1_d3 --ckpt <cp_dir> --boards 128 --ticks 12
+  python -m experiments.interp.e1 --ckpt <cp_dir> --boards 128 --ticks 12
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -30,9 +30,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_plan import analyse_plan, bfs_from, WALL, TARGET
-from results.interp_slots import decode_tiles
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.plan import analyse_plan, bfs_from, WALL, TARGET
+from experiments.interp.slots import decode_tiles
 
 
 def _fit(Xtr, ytr, lam=10.0):

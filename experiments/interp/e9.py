@@ -10,7 +10,7 @@ We give EXTENDED thinking (K=16) and read the critic value at every tick (a long
 consequence that may need propagation time). corr(dV, -Delta d) > 0 and dV_on << dV_off => the value
 field DOES adopt the new transition structure.
 
-  python -m results.interp_e9_d3 --ckpt <cp_dir> --boards 200 --ticks 16
+  python -m experiments.interp.e9 --ckpt <cp_dir> --boards 200 --ticks 16
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -18,9 +18,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 WALL_RGB = np.array([0, 0, 0], np.uint8)

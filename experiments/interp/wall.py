@@ -7,15 +7,15 @@ embed is unaffected -> any influence is via the recurrent attention). Record gra
 walls; unreachable=inf) and Euclidean. Compare agent-cell influence (final ||Δh|| and onset tick) for
 BLOCKED (graph≫euclid or unreachable) vs OPEN (graph≈euclid) cells at matched Euclidean distance.
 
-  python -m results.interp_wall_d3 --ckpt <cp_dir> --boards 256
+  python -m experiments.interp.wall --ckpt <cp_dir> --boards 256
 """
 from __future__ import annotations
 import argparse, dataclasses
 import numpy as np
 import jax, jax.numpy as jnp
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, FLOOR, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, FLOOR, AGENT
 
 
 def main(cp_dir, n_boards):

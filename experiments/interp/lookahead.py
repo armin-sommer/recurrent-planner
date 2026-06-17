@@ -9,13 +9,13 @@ Logits AND value are computed from the crash-free recompute_d3 (faithful to the 
 plus the MLP + actor/critic head matmuls -- we do NOT call the model's get_action/get_logits_and_value,
 which hit the rel_bias-gather tracer error under nn.scan. GPU-safe.
 
-  python -m results.interp_lookahead_d3 --ckpt <cp_dir> --boards 256
+  python -m experiments.interp.lookahead --ckpt <cp_dir> --boards 256
 """
 from __future__ import annotations
 import argparse, dataclasses
 import numpy as np
 import jax, jax.numpy as jnp
-from results.interp_planning_d3 import recompute_d3, get_embed
+from experiments.interp.planning import recompute_d3, get_embed
 
 
 def main(cp_dir, n_boards):

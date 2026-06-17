@@ -15,8 +15,8 @@ tracers through the model's internal vmap-over-time). Instead we:
     returns (carry, logits, value, metrics)) -- so the extracted attention is faithful, not a reimpl bug.
 
 Usage:
-  python -m results.interp_slots --self-test                    # local, random weights: validates recompute
-  python -m results.interp_slots --ckpt <cp_dir> --boards 256   # node: trained ckpt, real boards, analyses
+  python -m experiments.interp.slots --self-test                    # local, random weights: validates recompute
+  python -m experiments.interp.slots --ckpt <cp_dir> --boards 256   # node: trained ckpt, real boards, analyses
 """
 from __future__ import annotations
 

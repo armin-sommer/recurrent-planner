@@ -14,13 +14,13 @@ plus the cheap on-policy TD residual  V(s_t) - (r_t + gamma V(s_{t+1})).
 V and the greedy policy are read from the crash-free recompute_d3 + head matmuls (GPU-safe). Successors
 come from the real env (deterministic level load -> replay recorded greedy actions, then branch).
 
-  python -m results.interp_bellman_d3 --ckpt <cp_dir> --boards 128 --depth 4
+  python -m experiments.interp.bellman --ckpt <cp_dir> --boards 128 --depth 4
 """
 from __future__ import annotations
 import argparse, dataclasses
 import numpy as np
 import jax, jax.numpy as jnp
-from results.interp_planning_d3 import recompute_d3, get_embed
+from experiments.interp.planning import recompute_d3, get_embed
 
 
 def main(cp_dir, n_boards, Kdepth):

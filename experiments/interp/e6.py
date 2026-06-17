@@ -13,7 +13,7 @@ the SAME probe under each intervention, and measure agreement at cells OUTSIDE t
 edits (propagated, not local). We also read the model's own critic value V (head) to compare the
 MAGNITUDE of impact across the three edits. Crash-free recompute_d3.
 
-  python -m results.interp_e6_d3 --ckpt <cp_dir> --boards 192 --examples 2
+  python -m experiments.interp.e6 --ckpt <cp_dir> --boards 192 --examples 2
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -21,9 +21,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 TARGET_RGB = np.array([254, 126, 125], np.uint8)

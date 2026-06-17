@@ -1,7 +1,7 @@
 """E8 -- do WALL cells carry "dead" value content? (does the obstacle-respect ride on v, not on routing A?)
 
 E7b showed the attention operator A does NOT re-route around a new wall (mass onto a cell ~unchanged when
-it becomes a wall). Yet through-walls (interp_wall_d3) shows walling a cell DOES change the propagated
+it becomes a wall). Yet through-walls (wall.py) shows walling a cell DOES change the propagated
 latent. Hypothesis: the obstacle-respect is carried by the VALUE projection v (z=(A v)W_out), not the
 routing -- a wall cell's v is "dead", so even though A still attends to it, it transmits ~no value.
 
@@ -10,7 +10,7 @@ We replicate the validated recompute and extract the top cell's value projection
   (2) FLIP a floor cell X -> wall: ||v(X)|| as floor vs as wall -- does it go dead causally?
 Self-check: our replicated top hidden matches recompute_d3 to ~0.
 
-  python -m results.interp_e8_d3 --ckpt <cp_dir> --boards 160
+  python -m experiments.interp.e8 --ckpt <cp_dir> --boards 160
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -18,9 +18,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed, _rmsnorm, _rel_offset_index
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed, _rmsnorm, _rel_offset_index
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
 from cleanba.entmax import entmax15
 
 WALL_RGB = np.array([0, 0, 0], np.uint8)

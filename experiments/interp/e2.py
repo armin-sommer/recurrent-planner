@@ -17,7 +17,7 @@ plus the agent cell and the readout value V. Every edit is re-decoded to verify 
   reward-move dh2 (far) << wall dh2 (far)  AND  V still shifts  -> SUCCESSOR REPRESENTATION
   reward-move dh2 (far) ~  wall dh2 (far)                       -> POLICY EVALUATION (goal in the iterate)
 
-  python -m results.interp_e2_d3 --ckpt <cp_dir> --boards 256
+  python -m experiments.interp.e2 --ckpt <cp_dir> --boards 256
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -25,9 +25,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, TARGET, AGENT
 
 TARGET_RGB = np.array([254, 126, 125], dtype=np.uint8)
 WALL_RGB = np.array([0, 0, 0], dtype=np.uint8)

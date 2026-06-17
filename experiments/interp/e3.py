@@ -14,7 +14,7 @@ entmax attention A. So "where does a cell's value get updated from" == the suppo
 We bin A(s,k) by exact BFS graph-distance d(s,k), per tick and per head, and read the mass-by-distance
 profile (rows of A sum to 1, so this is the fraction of each cell's update arriving from each hop-shell).
 
-  python -m results.interp_e3_d3 --ckpt <cp_dir> --boards 64 --ticks 8
+  python -m experiments.interp.e3 --ckpt <cp_dir> --boards 64 --ticks 8
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -22,9 +22,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_plan import bfs_from, WALL
-from results.interp_slots import decode_tiles
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.plan import bfs_from, WALL
+from experiments.interp.slots import decode_tiles
 
 
 def pairwise_graphdist(tiles_b, H, W):

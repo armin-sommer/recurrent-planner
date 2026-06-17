@@ -2,7 +2,7 @@
 
 Hypothesis: value sits on every node and the action is its gradient (move toward the higher-value
 neighbour). So from EACH node we should be able to decode "the action it wants", and the field of those
-actions is the plan (arrows flowing to the goal). This is distinct from interp_planq (which found the
+actions is the plan (arrows flowing to the goal). This is distinct from planq (which found the
 *executed trajectory* a1..a5 is NOT stored): the policy field is the value's gradient, present wherever
 value is, not a stored sequence.
 
@@ -12,7 +12,7 @@ fraction of nodes point goalward (toward lower BFS-distance)?; (3) tie to value:
 take its gradient (max-value neighbour), and check it agrees with the directly-decoded action -- i.e. the
 action IS the value gradient. Export one board's field for a figure.
 
-  python -m results.interp_e11_d3 --ckpt <cp_dir> --boards 192 --ticks 6
+  python -m experiments.interp.e11 --ckpt <cp_dir> --boards 192 --ticks 6
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, greedy_dir, WALL, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, greedy_dir, WALL, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]   # up, down, left, right (indices 0..3)
 

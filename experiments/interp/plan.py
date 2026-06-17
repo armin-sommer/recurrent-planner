@@ -17,8 +17,8 @@ plan (which needs A*), but exactly the lattice field the paper's recovery-of-N /
 story is about. Probes are simple numpy ridge / least-squares classifiers (decodability TRENDS, not
 absolute SOTA). Same fixed sample split across ticks so the per-tick trend is apples-to-apples.
 
-  python -m results.interp_plan --self-test
-  python -m results.interp_plan --ckpt <cp_dir> --boards 256 --ticks 12
+  python -m experiments.interp.plan --self-test
+  python -m experiments.interp.plan --ckpt <cp_dir> --boards 256 --ticks 12
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -27,7 +27,7 @@ from collections import deque
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_slots import recompute_cell, _tokens, decode_tiles
+from experiments.interp.slots import recompute_cell, _tokens, decode_tiles
 
 WALL, FLOOR, BOX, TARGET, AGENT = 0, 1, 2, 3, 4
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]  # up, down, left, right

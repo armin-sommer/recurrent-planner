@@ -10,7 +10,7 @@ LATER for larger d, intermediate cells must relay it across ticks => compounding
   arrival-tick rises with d  (horizon grows ~k hops/tick)   -> REACH COMPOUNDS: pulled-from cells get updated
   far d (>3) never influences / arrives at tick 1 flat       -> fixed single-tick blur, no deepening
 
-  python -m results.interp_e5_d3 --ckpt <cp_dir> --boards 256 --dmax 9 --ticks 12
+  python -m experiments.interp.e5 --ckpt <cp_dir> --boards 256 --dmax 9 --ticks 12
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -18,9 +18,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, AGENT
 
 
 def main(cp_dir, n_boards, dmax, K):

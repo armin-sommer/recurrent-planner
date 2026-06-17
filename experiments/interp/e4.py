@@ -16,7 +16,7 @@ A[q,:]. So A[q,:] literally says "where q pulls value from." We know A is broad 
 This says what algorithm the loop implements: 1-hop Jacobi PE (mass at d=1 only) vs a broad multi-hop
 goal-ward diffusion kernel (geometric decay, biased toward the goal) vs a global broadcast-from-source.
 
-  python -m results.interp_e4_d3 --ckpt <cp_dir> --boards 128 --tick -1
+  python -m experiments.interp.e4 --ckpt <cp_dir> --boards 128 --tick -1
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -25,9 +25,9 @@ from collections import deque
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 

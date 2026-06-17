@@ -17,10 +17,10 @@ from that board as ground truth, probe per tick:
 Q1 per-object: balanced-accuracy probe h(s) -> {is wall / box / target / agent}, per tick (does the latent
 bind the *task objects*, not just floor).
 
-Reuses the validated recompute_d3 (faithful to the model, see interp_planning_d3 --self-test) and the
-probe helpers from interp_plan. No solver / no navigation proxy: ground truth is the model's own behavior.
+Reuses the validated recompute_d3 (faithful to the model, see planning.py --self-test) and the
+probe helpers from plan. No solver / no navigation proxy: ground truth is the model's own behavior.
 
-  python -m results.interp_search_d3 --ckpt <cp_dir> --boards 256 --steps 30
+  python -m experiments.interp.search --ckpt <cp_dir> --boards 256 --steps 30
 """
 from __future__ import annotations
 
@@ -31,9 +31,9 @@ import numpy as np
 import jax
 import jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import ridge_r2, lin_acc, _stz
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import ridge_r2, lin_acc, _stz
 
 WALL, FLOOR, BOX, TARGET, AGENT = 0, 1, 2, 3, 4
 

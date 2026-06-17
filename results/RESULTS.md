@@ -40,5 +40,6 @@ Raw artifacts (gitignored): `checkpoints/all_arms/all_ckpts.tar` (274 ckpts, all
 
 ## Mechanism probes (done)
 The decisive mechanism tests — does the core compute a localized, propagating value/plan frontier? — are in
-the **D=3 entmax interpretability suite**: see [`README.md`](README.md). Headline: planning emerges as
+the **D=3 entmax interpretability suite**: see
+[`../experiments/interp/README.md`](../experiments/interp/README.md). Headline: planning emerges as
 **amortized policy evaluation (value propagation)** along a fixed, transition-respecting attention graph.

@@ -9,7 +9,7 @@ pixels), require it to actually lengthen the path, and compare to an OFF-path wa
   greedy-action change rate              -- does it re-plan the agent's move?
 on-path >> off-path on both => the re-formed value propagates back to the agent and changes its decision.
 
-  python -m results.interp_e10_d3 --ckpt <cp_dir> --boards 200 --ticks 12
+  python -m experiments.interp.e10 --ckpt <cp_dir> --boards 200 --ticks 12
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 WALL_RGB = np.array([0, 0, 0], np.uint8)

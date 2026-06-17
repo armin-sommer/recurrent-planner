@@ -12,7 +12,7 @@ trained K=6 the value field has not had time to re-form). Theory (policy-evaluat
 We report corr(dV_t, -Delta dist) at each tick t; theory predicts it is positive and STRENGTHENS with
 thinking (the field re-forms over ticks). Readout value = trained head; edits are re-decoded to verify.
 
-  python -m results.interp_e6b_d3 --ckpt <cp_dir> --boards 256 --ticks 16
+  python -m experiments.interp.e6b --ckpt <cp_dir> --boards 256 --ticks 16
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -20,9 +20,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
 
 TARGET_RGB = np.array([254, 126, 125], np.uint8)
 BOX_RGB = np.array([142, 121, 56], np.uint8)

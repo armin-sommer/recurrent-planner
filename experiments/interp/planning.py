@@ -9,14 +9,14 @@ Answers the three thesis questions on a trained checkpoint:
   Q3 PLANNING      -- value-iteration signature: per tick, probe h -> BFS distance-to-target (value)
                       and greedy move-direction (plan); track where the representation CHANGES
                       (an outward change-front from the goal = a search frontier). Reuses
-                      results.interp_plan.analyse_plan (board_repr = h(s) directly; no slot lift).
+                      experiments.interp.plan.analyse_plan (board_repr = h(s) directly; no slot lift).
 
 Faithfulness: we RECOMPUTE the D=3 stacked-cell entmax forward in plain JAX from the loaded params
 and VALIDATE that our final top-layer h equals the model's own carry[-1].h (get_logits_and_value),
 so the extracted attention/states are the model's, not a reimpl artifact.
 
-  python -m results.interp_planning_d3 --self-test                  # local CPU: validates the recompute
-  python -m results.interp_planning_d3 --ckpt <cp_dir> --boards 256 # node: trained ckpt, real boards
+  python -m experiments.interp.planning --self-test                  # local CPU: validates the recompute
+  python -m experiments.interp.planning --ckpt <cp_dir> --boards 256 # node: trained ckpt, real boards
 """
 from __future__ import annotations
 
@@ -27,8 +27,8 @@ import jax
 import jax.numpy as jnp
 
 from cleanba.entmax import entmax15
-from results.interp_slots import decode_tiles
-from results.interp_plan import analyse_plan, report as plan_report, lin_acc, WALL
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import analyse_plan, report as plan_report, lin_acc, WALL
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 

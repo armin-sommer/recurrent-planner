@@ -7,7 +7,7 @@ squares far above chance -- i.e. whether DENSE attention LEARNED the local trans
 Also reads the learned offset-tied positional bias (rel_bias) directly: does it up-weight nearby
 offsets? Validated by reproducing the model's own readout (dense_list_0) from the recompute.
 
-Usage (node):  python -m results.interp_attn --ckpt <cp_dir> [--boards 256] [--king]
+Usage (node):  python -m experiments.interp.attn --ckpt <cp_dir> [--boards 256] [--king]
 """
 from __future__ import annotations
 import argparse

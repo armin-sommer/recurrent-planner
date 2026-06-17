@@ -9,7 +9,7 @@ edited cell, so a global average washes it out. E7b measures it locally:
 
 Interventions (as in E7): goal->far side, obstacle on the agent->goal geodesic, box->adjacent floor.
 
-  python -m results.interp_e7b_d3 --ckpt <cp_dir> --boards 160
+  python -m experiments.interp.e7b --ckpt <cp_dir> --boards 160
 """
 from __future__ import annotations
 import argparse, dataclasses
@@ -17,9 +17,9 @@ from pathlib import Path
 import numpy as np
 import jax, jax.numpy as jnp
 
-from results.interp_planning_d3 import recompute_d3, get_embed
-from results.interp_slots import decode_tiles
-from results.interp_plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
+from experiments.interp.planning import recompute_d3, get_embed
+from experiments.interp.slots import decode_tiles
+from experiments.interp.plan import bfs_from, WALL, FLOOR, BOX, TARGET, AGENT
 
 DIRS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
 TARGET_RGB = np.array([254, 126, 125], np.uint8)
