@@ -56,10 +56,12 @@ bias, planning will emerge has been left unanswered. In this work, we show
 that when a neural agent has latent states that learn relations between them,
 such as convolutional hidden states or attention blocks, the agent can learn
 to tie these states to environment states and then plan over the learned state
-graph: a learned \emph{policy-evaluation operator} computes a value field --- a
-latent from which the value is decodable --- and the recurrence refines the
-\emph{decision} read from it; with the critic's value learning, this realizes
-generalized policy iteration in latent space.
+graph. The value of each state is computed in an \emph{amortized} way --- a fixed
+value field, decodable from the cells and not re-propagated over thinking steps ---
+and the thinking loop performs the complementary half, \emph{policy improvement}:
+it iteratively refines the decision read off that value toward the greedy action.
+Amortized evaluation and iterated improvement are, together, generalized policy
+iteration in latent space.
 \end{abstract}
 
 \section{Introduction}
@@ -101,23 +103,19 @@ transition graph $\mathcal N$: a \emph{learned state graph}.
 \end{enumerate}
 
 Once these hold, planning follows from the architecture's own recurrence. Our
-central theoretical result (Section~\ref{sec:planning}) is that in a bound,
-localized configuration the thinking loop is not a black box: it applies a learned
-\emph{policy-evaluation operator} along the graph to a value-decodable decision
-statistic, and a localized head reads a policy from it. The operator's fixed point
-is a value field; the network may reach it by iterating across ticks or compile it
-into a single step (empirically the latter), and what more thinking then refines is
-the \emph{decision} at the head, settling it toward greedy --- most for the hardest
-states. Refinement of the decision within a thinking sweep and value
-learning by temporal differences across environment steps together constitute
-\emph{generalized policy iteration} on the learned state graph. We stress that one
-need not attribute the latent loop to a particular half of policy iteration:
-whether it is best read as policy evaluation (propagating the current value) or as
-policy improvement (a look-ahead backup) depends only on how selective the learned
-routing is, and the two are endpoints of one spectrum. The architecture-level
-claim is invariant to that choice --- a generic relational recurrence, supplied
-only with RL signal, comes to run this refinement-and-readout loop over a graph it
-has itself learned.
+central result (Section~\ref{sec:planning}), made precise by the mechanistic
+experiments, is that the thinking loop is the \emph{policy-improvement} half of
+policy iteration. The value of each state --- decodable from its cell --- is
+computed in an \emph{amortized} way: a fixed value field, set within the first
+tick and maintained across environment steps by the critic's temporal-difference
+learning, \emph{not} re-propagated over thinking ticks. What the thinking ticks do
+is iterate \emph{policy improvement}: the localized head reads the greedy action
+over that fixed value, and each additional tick refines this decision toward the
+greedy choice, converging the action --- most for the hardest states, which need
+the most improvement. Amortized evaluation (the compiled operator together with
+TD across environment steps) and iterated improvement (the thinking loop) together
+constitute \emph{generalized policy iteration} on a graph the network has itself
+learned --- a generic relational recurrence, given only RL signal.
 
 The answer also delimits what must, and need not, be built in. A convolutional
 core hard-masks its routing to a local stencil, so the state graph is supplied
@@ -132,17 +130,18 @@ symmetry-breaking, not a precondition for it.
 inductive bias behind emergent planning, and formalize the configuration that
 training drives them to: a \emph{binding} of latent cells to environment
 states with localized decision statistics (Section~\ref{sec:binding}).
-(ii) We show that, in this configuration, the thinking loop realizes a
-policy-evaluation operator over the learned graph (Section~\ref{sec:planning},
-Proposition~\ref{prop:improvement}) whose value field the trained network largely
-\emph{amortizes}, and additional thinking refines the \emph{decision} read from it
---- generalized policy iteration in latent space, without committing the loop to a
-specific half or to iterating vs.\ amortizing the evaluation.
+(ii) We show that, in this configuration, the thinking loop is the
+\emph{policy-improvement} half of generalized policy iteration
+(Section~\ref{sec:planning}, Proposition~\ref{prop:improvement}): the state value
+is computed amortized (a fixed value field), and additional thinking refines the
+decision read from it toward the greedy action --- improvement unrolled in latent
+space over an amortized evaluation.
 (iii) We verify by mechanistic interpretation that a relational core whose
 routing is fully learned (instantiated by attention) acquires both the binding
 and a routing that recovers $\mathcal N$ --- in the masked and the dense case
-alike --- exhibiting the propagating plan field that prior work decodes from
-convolutional planners (Section~\ref{sec:empirics}).
+alike --- with the value amortized and the \emph{decision} refined over thinking
+ticks, the same plan content prior work decodes from convolutional planners
+(Section~\ref{sec:empirics}).
 
 
 
@@ -307,140 +306,100 @@ Section~\ref{sec:empirics} complements them with an attention instance in
 which $\sigma$ and the routing are both \emph{discovered} by training.
 
 
-\section{Emergent Planning as Refinement of a Decision Statistic}
+\section{Emergent Planning as Policy Improvement over an Amortized Value}
 \label{sec:planning}
 
 We now characterize what the update \eqref{eq:update} computes in a bound,
-localized configuration. We keep the description deliberately \emph{general}.
-Rather than commit the latent recurrence to one algorithm --- a hard Bellman
-backup, a soft evaluation, an outward or an inward sweep --- we isolate the
-invariant every such instance shares: the loop applies a learned
-\emph{policy-evaluation operator} over the graph to a value-decodable decision
-statistic, and a localized head reads a policy from it. The operator's fixed point
-is a value field; the trained network may reach it by iterating across ticks or
---- as we find --- compile it into essentially one step (amortizing the
-evaluation), and what the thinking budget then refines is the \emph{decision} at
-the head. The alternation of this readout improvement with the critic's value
-learning is generalized policy iteration.
+localized configuration. The picture is a clean split: the per-state \emph{value}
+is computed in an amortized way --- a fixed field --- and the thinking loop is the
+\emph{policy-improvement} half of policy iteration, iteratively refining the
+decision read off that value.
 
-\paragraph{A propagated decision statistic.} Beside its observational content,
-the cell $\sigma(s)$ carries a \emph{decision statistic} $d^{k}(s)$. We mean this
-concretely: $d^{k}(s)$ is the value/plan estimate \emph{decodable from the cell} ---
-the critic's fixed readout recovers a state value from it,
-$d^{k}(s)\equiv\rho_V\!\bigl(h^{k}(\sigma(s))\bigr)\approx V(s)$
-(Def.~\ref{def:localized}; and empirically the value is \emph{linearly} decodable
-from the cell latent, \S\ref{sec:emp-binding}). Alongside it the cell holds a reward
-channel $\mathcal R(s)$, written by the encoder and passed unchanged through the
-self-edge. Initialized from local information, $d^{0}=\rho_V(h^{0})$, this decodable
-estimate is updated each thinking step from the cell's own value and those of its
-graph-neighbours,
-\begin{equation}
-  d^{k+1}(s)\;=\;\mathcal B\Bigl(\bigl\{\,\mathcal R(s')+\gamma\,d^{k}(s')
-  \;:\;(s,s')\in\mathcal N\,\bigr\}\Bigr),
-  \label{eq:propagation}
-\end{equation}
-where the per-neighbour term $\mathcal R(s')+\gamma\,d^{k}(s')$ is the message
-produced by $F_\phi$ from the content of cell $\sigma(s')$ alone, and $\mathcal B$
-is the routing--aggregation $(\alpha,\oplus)$ over the out-neighbour cells ---
-its support restricted to $\mathcal N$ by Def.~\ref{def:indexed}(ii). Weight-tying
-and time-invariance make \eqref{eq:propagation} a single fixed graph operator,
-iterated. The reward and value-readout channels are stationary: $\rho_V$ decodes
-the value from a fixed channel, and what moves across thinking steps is the
-propagated statistic.
+\paragraph{An amortized value.} The cell $\sigma(s)$ carries a \emph{value}
+$v(s)$, decodable from its content by the critic's fixed readout,
+$v(s)=\rho_V\!\bigl(h(\sigma(s))\bigr)$ (Def.~\ref{def:localized}; empirically $V$
+is linearly decodable from the cell latent, \S\ref{sec:emp-binding}), alongside a
+reward channel holding $\mathcal R(s)$. This value is the fixed point of a learned
+graph operator $\mathcal B$ over $\mathcal N$ --- a discounted aggregate of the
+rewards reachable along the graph, the resolvent $(I-\gamma\mathcal B)^{-1}r$
+(Assumption~\ref{ass:value}). Crucially, the network does \emph{not} re-derive it
+across thinking ticks: it is computed \emph{amortized} --- set within the first
+tick and held fixed thereafter, and maintained across environment steps by the
+critic's temporal-difference learning (verified in \S\ref{sec:emp-planning}). The
+value is the substrate the loop plans over, not the loop's per-tick product.
 
-\paragraph{The operator computes a value --- iterated or amortized.} The content of
-$\mathcal B$ varies by instance --- it may return the (soft) maximal incoming
-message, the routing-weighted mean, or anything between --- but in every case it is
-a graph value operator with a well-defined fixed point.
-
-\begin{assumption}[Graph value operator]
-\label{ass:refine}
-The operator $\mathcal B$ of \eqref{eq:propagation} is a $\gamma$-contraction
-whose fixed point $d^\star$ is a value estimate --- the discounted aggregate of the
-rewards reachable along $\mathcal N$, i.e.\ the resolvent
-$(I-\gamma\mathcal B)^{-1}r$. (For $\oplus=\max$, $d^\star=V^\star$; for a
-routing-weighted mean tracking the behaviour policy, $d^\star=V^\pi$; intermediate
-selectivity interpolates.)
+\begin{assumption}[Graph value]
+\label{ass:value}
+There is a fixed cellwise readout $\rho_V$ and a graph operator $\mathcal B$ over
+$\mathcal N$ (a $\gamma$-contraction) such that $v=\rho_V(h)$ is its fixed point
+$(I-\gamma\mathcal B)^{-1}r$, the discounted reward-to-go along the graph. The
+network realises $v$ \emph{amortized} (in essentially one compiled step), rather
+than by iterating $\mathcal B$ over thinking ticks.
 \end{assumption}
 
-The trained network may reach $d^\star$ by \emph{iterating} $\mathcal B$ across
-thinking ticks, or by \emph{compiling} it into essentially a single step
-(amortizing the evaluation); empirically the cores we probe do the latter --- the
-value field is set within the first tick (Section~\ref{sec:empirics}). Either way
-the value field is the operator's fixed point, and what the thinking budget visibly
-refines is the \emph{readout decision} (below), not the value's horizon. Whether the
-operator sweeps \emph{outward} from reward-bearing cells, \emph{inward} toward the
-agent, or globally in one hop is a property of $\alpha$, not of the claim.
-
-\paragraph{The head reads an improving policy.} The actor is localized
-(Def.~\ref{def:localized}) and \emph{greedy-consistent}: it reads the refined
-statistic at the current cell and points (softly) at the out-neighbour it rates
-best,
-\begin{equation*}
-  \pi(\cdot\mid s_t)=\rho_\pi\bigl(h^{K}(\sigma(s_t))\bigr),\qquad
-  g^{k}(s)=\operatorname*{arg\,max}_{s':(s,s')\in\mathcal N} d^{k}(s').
-\end{equation*}
-The selection that turns a value estimate into an action lives at this readout;
-over thinking ticks it is this readout --- the \emph{decision} --- that settles
-toward greedy, while the value estimate is the operator's (amortized) fixed point.
+\paragraph{The thinking loop improves the policy.} The actor is localized and
+\emph{greedy-consistent}: it reads, at the current cell, the action whose
+out-neighbour has the highest backed-up value. Writing $g^{k}(s)$ for the decision
+the head would commit at thinking step $k$, the thinking loop refines it toward the
+greedy choice over the fixed value,
+\begin{equation}
+  g^{k+1}(s)\;=\;\operatorname*{arg\,max}_{s':(s,s')\in\mathcal N}
+  \bigl[\,\mathcal R(s')+\gamma\,v(s')\,\bigr],
+  \qquad
+  \pi(\cdot\mid s_t)=\rho_\pi\bigl(h^{K}(\sigma(s_t))\bigr),
+  \label{eq:improvement}
+\end{equation}
+the $\max$ that policy iteration's improvement step applies --- here over the
+amortized value. The selection lives at the head; the value channel is fixed, and
+what moves across thinking ticks is this decision.
 
 \begin{definition}[Plan field]
 \label{def:planfield}
 The \emph{plan field} at thinking step $k$ is $g^{k}:\mathcal S_0\to\mathcal S$,
-$g^{k}(s)\in\{s':(s,s')\in\mathcal N\}$, the head's greedy readout of the decision
-statistic over the out-neighbour cells, realized as the routing pattern of
-$\sigma(s)$. The actor returns $g^{K}(s_t)$ at the current state.
+$g^{k}(s)\in\{s':(s,s')\in\mathcal N\}$, the head's greedy choice over the value of
+the out-neighbour cells, realized as the routing pattern at $\sigma(s)$. The actor
+returns $g^{K}(s_t)$ at the current state.
 \end{definition}
 
-\begin{proposition}[Refinement improves the readout policy]
+\begin{proposition}[The loop is policy improvement]
 \label{prop:improvement}
-Under Assumption~\ref{ass:refine} with a greedy-consistent localized head, the
+Under Assumption~\ref{ass:value} with a greedy-consistent localized head, the
 readout policy improves monotonically in the thinking budget,
 $V^{g^{k+1}}\ge V^{g^{k}}$ pointwise, with strict improvement wherever $g^{k}$ is
-not already greedy for $d^{k}$ \citep[multi-step policy improvement;][]
-{efroni2018beyond}; at the fixed point $g^{\infty}$ is greedy with respect to the
-refined value $d^\star$. In the sparse terminal-reward setting, once $K$ exceeds
-the graph-distance from $s$ to $s_{\text{goal}}$, $g^{K}(s)$ lies on a
-$\gamma$-optimal path regardless of the accuracy of $d^{0}$ beyond its sign.
+not yet greedy for $v$ \citep[multi-step policy improvement;][]{efroni2018beyond},
+converging to the greedy policy with respect to $v$. The improvement is largest
+where the decision is hardest --- states far from reward, which take the most ticks
+to settle. In the sparse terminal-reward setting, once $K$ exceeds the
+graph-distance from $s$ to $s_{\text{goal}}$, $g^{K}(s)$ lies on a $\gamma$-optimal
+path regardless of the accuracy of $v$ beyond its sign.
 \end{proposition}
 
-\paragraph{The process is generalized policy iteration --- and we need not pin the
-latent half.} Two interleaved processes are at work: across environment steps the
-critic fits the value by TD; within a step the thinking loop refines the decision
-statistic and the head reads off a (more) greedy policy. This is exactly the shape
-of \emph{generalized policy iteration} \citep{sutton2018reinforcement} --- a value
-estimate and a policy improving against one another --- with the thinking budget
-$K$ refining the readout decision. Crucially, one need not decide which formal half
-the latent loop computes, nor whether it \emph{iterates} the evaluation across
-ticks or \emph{amortizes} it into a single step. If $\mathcal B$ is selective,
-\eqref{eq:propagation} is a look-ahead policy-improvement backup
-($d^{k}\!\to\!(T^\ast)^{k}d^{0}$); if $\mathcal B$ averages, it is policy
-evaluation propagating $V^\pi$; trained cores sit on this spectrum, and in both
-readings the loop refines a value/plan estimate that a greedy-consistent head
-turns into an improved action. The paper's claim is the architecture-level one: a
-generic relational recurrence, given only RL signal, comes to run \emph{some} such
-refinement over a learned state graph --- planning as GPI in latent space ---
-whichever end of the spectrum a given instance occupies.
+\paragraph{This is generalized policy iteration --- with evaluation amortized.}
+Generalized policy iteration is a value estimate and a policy improving against one
+another \citep{sutton2018reinforcement}; here the split is explicit.
+\emph{Evaluation is amortized}: the value field is compiled into the forward pass
+(one operator step, Assumption~\ref{ass:value}) and maintained across environment
+steps by the critic's TD updates --- it does not iterate over thinking ticks.
+\emph{Improvement is the thinking loop}: each tick refines the decision toward
+greedy over that fixed value (\eqref{eq:improvement}), the budget $K$ setting how
+far the decision is improved. A generic relational recurrence, given only RL
+signal, thereby runs the improvement half of policy iteration over a value it has
+learned to compute in one shot.
 
 This is, we contend, the mechanism behind emergent planning in model-free agents.
 The plan field $g^{k}$ is the object decoded from convolutional agents by
-\citet{bush2025interpreting}: directional, square-attached concepts (``the box
-will be pushed left from here'') whose spatial extent grows over internal ticks,
-which causally drive the action, and whose refinement explains why additional
-test-time compute improves performance \citep{guez2019investigation}; the same
-iterative, spatially propagating signature appears in deep Sokoban ResNets, with
-layers in place of ticks \citep{taufeeque2024planning}. That those agents show an
-\emph{outward} frontier is a consequence of their \emph{local} (convolutional)
-routing, which relays one hop per step; the invariant our account isolates is the
-refinement of the statistic, not the direction it sweeps --- a core with dense,
-non-local routing refines the same estimate globally rather than as a wavefront
-(Section~\ref{sec:empirics}). For cores whose routing is explicit, as in
-attention, the identification is sharper still: the plan is not merely decodable
-from the activations, it \emph{is} the routing pattern. Finally, the improvement
-is consolidated rather than recomputed: the actor exposes $g^{K}(s_t)$ to the
-policy gradient, whose advantage weighting shifts parameters toward the improved
-policy, and across environment steps the critic re-evaluates and the loop repeats.
-
+\citet{bush2025interpreting}: directional, square-attached concepts (``the box will
+be pushed left from here'') that \emph{form over internal ticks}, causally drive the
+action, and explain why extra test-time compute helps
+\citep{guez2019investigation}; the same forming-over-layers signature appears in
+deep Sokoban ResNets \citep{taufeeque2024planning}. That is the \emph{decision}
+being improved over ticks --- not the value, which is amortized. Where the routing
+is local (convolutional) the improvement propagates as an outward plan frontier;
+where it is dense (attention) the same improvement is global, surfacing as the
+settling action at the head (\S\ref{sec:empirics}). The improvement is consolidated
+rather than recomputed: the actor exposes $g^{K}(s_t)$ to the policy gradient,
+which shifts parameters toward the improved policy, and across environment steps
+the critic re-evaluates --- closing the loop.
 
 \section{Empirical Verification}
 \label{sec:empirics}
