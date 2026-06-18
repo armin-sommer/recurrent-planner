@@ -1,0 +1,237 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\setlist[itemize]{leftmargin=1.4em,itemsep=3pt,topsep=2pt}
+\title{\vspace{-1.5em}Mechanistic Interpretability Experiments: A Per-Experiment Report\\[2pt]
+\large Companion to \emph{Planning Emerges from Reinforcement Learning with Relational Latent States}}
+\author{}\date{}
+\begin{document}\maketitle\vspace{-2.5em}
+
+\noindent One page per experiment, in the order Setup / What we evaluated / Hypothesis / What we found /
+Interpretation / Conclusion. Experiments \S1--16 probe the state-indexed attention-LSTM ($D{=}3$, 1.5-entmax)
+at its $300$M-step Sokoban checkpoint on held-out \texttt{valid\_medium}; \S17--18 cross-check the pretrained
+convolutional DRC(3,3) at $2$B steps. Throughout, the value field is found to be \emph{amortized} (a fixed
+substrate) and the thinking ticks perform \emph{decision-time planning} --- integrating reward information
+from graph-distant states into the action --- rather than iterating value propagation.
+\clearpage
+
+\subsection*{1. Binding: latent cells index environment states}
+\textit{Script: \texttt{experiments/interp/binding\_balanced.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM ($D=3$, entmax) at its $300$M Sokoban checkpoint (\texttt{cp\_299996160}) on held-out \texttt{valid\_medium} boards. For each of $256$ boards we run the encoder to obtain the embedding, then recompute the recurrent core to recover the per-cell content $h_t(s)$ at every thinking tick $k$, and read the ground-truth object at each cell from the observation.
+\item \textbf{What we evaluated.} For each object class we fit a linear probe mapping a single cell's content $h_t(s)$ to an is-object label, on a class-balanced split with equal positives and negatives. We report the test accuracy on that balanced split (i.e.\ per-object balanced accuracy, chance $0.50$), separately at each thinking tick, so that the rare movable objects (box/target/agent, $1$--$4\%$ of cells) are not washed out by the floor majority.
+\item \textbf{Hypothesis.} If latent cells bind to environment states, each object class --- including the rare ones --- should be decodable from a single cell well above chance; and if that content is written by the encoder and merely carried by the loop, accuracy should be flat across thinking ticks.
+\item \textbf{What we found.} Per-object balanced decode accuracy wall/box/target/agent $=0.74/0.73/0.72/0.78$ (chance $0.50$), flat across thinking ticks; the rare movable objects ($1$--$4\%$ of cells) decode about as well as walls.
+\item \textbf{Interpretation.} Distinct cells encode distinct environment states, and the state is read locally from a single cell; accuracy flat across ticks means binding is written by the encoder, not built by the loop.
+\item \textbf{Conclusion.} The latents are state-indexed (an approximately injective map $\sigma$ from states to cells) --- the substrate planning runs on.
+\end{itemize}
+\clearpage
+
+\subsection*{2. Recovery of the transition graph $\mathcal N$ (learned kernel)}
+\textit{Script: \texttt{experiments/interp/e4.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM ($D=3$, entmax) at the $300$M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. Per-tick cell states and their attention rows are obtained by recomputing the $D=3$ recurrence over the board embedding (\texttt{recompute\_d3}); we read the learned operator $A$ at the deepest cell, settled tick, head-averaged, so that row $A[q,:]$ literally encodes where cell $q$ pulls value from.
+\item \textbf{What we evaluated.} For the top cell we characterise the attention operator $A$ against board geometry: routing mass as a function of GRAPH distance $d(q,k)$ on the move graph $\mathcal N$ (BFS around walls), fitting a geometric decay $\rho^{d}$; mass leaking to graph-unreachable (through-wall) cells; mass versus EUCLIDEAN distance as a pixel-locality contrast; and landmark mass on the self, agent, and target cells.
+\item \textbf{Hypothesis.} If the loop has internalised the board's adjacency, the broad ($\sim$$85$-key) entmax support should not be a pixel blur but should track $\mathcal N$: mass concentrated on transition-feasible neighbours, decaying geometrically with graph distance, $\approx 0$ to graph-unreachable cells, distinguishing a learned move stencil from a global broadcast or a raw Euclidean kernel.
+\item \textbf{What we found.} Routing mass on the wall-masked move-neighbours is $7$--$13\times$ uniform; weight decays geometrically with GRAPH distance ($\rho\approx0.66$, reach $\sim$3 hops), is $\approx0$ to graph-unreachable cells, with a $+0.07$ anchor on the goal cell; entmax support broad ($\sim$85 keys).
+\item \textbf{Interpretation.} The dense, unmasked routing concentrates on transition-feasible neighbours and decays with graph distance --- it recovers the board's one-step move graph $\mathcal N$, re-derived per board from content.
+\item \textbf{Conclusion.} The effective graph over cells equals the $\sigma$-image of $\mathcal N$; the dense core LEARNS the adjacency rather than receiving it as a mask.
+\end{itemize}
+\clearpage
+
+\subsection*{3. Through-walls: influence is graph- not pixel-defined (causal)}
+\textit{Script: \texttt{experiments/interp/wall.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) at its 300M-step Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. For each board we run a forward pass and read out the per-tick recurrent cell state at the agent's square; perturbed states are obtained by flipping a single floor cell and recomputing the $D=3$ recurrence over the $K$ thinking ticks.
+\item \textbf{What we evaluated.} On each board we flip one floor cell at Euclidean (pixel) distance in $[3.5, 7]$ --- beyond the $\sim 7\times7$ convolutional receptive field, so any effect must travel through the recurrent attention rather than the embedding. We then measure the influence on the agent latent (final $\lVert \Delta h \rVert$ at the agent square) and record both the around-walls graph-distance (BFS, unreachable $=\infty$) and the Euclidean distance, comparing blocked cells (graph $\gg$ Euclidean, or unreachable) against open cells (graph $\approx$ Euclidean) at matched pixel distance.
+\item \textbf{Hypothesis.} If routing were spatial, a perturbation behind a wall would influence the agent as much as an open cell at the same pixel distance; if instead propagation respects the transition graph $\mathcal{N}$, blocked cells should influence the agent strictly less. The signature is a sub-unity blocked/open influence ratio and a negative partial correlation of influence with graph-distance after controlling for Euclidean distance.
+\item \textbf{What we found.} At matched pixel distance, a cell separated from the agent by a wall influences it only $0.38\times$ as much as a graph-near cell; partial correlation of influence with graph-distance, controlling for Euclidean distance, $=-0.32$.
+\item \textbf{Interpretation.} Information flow follows the navigable graph (around walls), not Euclidean space --- relational, not spatial smoothing.
+\item \textbf{Conclusion.} The routing respects the transition graph causally; planning is over $\mathcal{N}$, not over pixels.
+\end{itemize}
+\clearpage
+
+\subsection*{4. Per-tick operator and the amortized value (E1)}
+\textit{Script: \texttt{experiments/interp/e1.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM (D$=3$, \texttt{entmax15} aggregation, \texttt{softmax} readout) from the 300M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. From each board we recompute the model's OWN per-tick cell hidden (\texttt{top\_h}) and per-tick attention operators ($A_t$) via the crash-free \texttt{recompute\_d3} path, reading the top-cell hidden and head-averaged attention at every thinking tick. Because the trained config aggregates as a convex average $z=(A\,v)W_{\mathrm{out}}$ rather than a max, the candidate per-tick update is a damped soft policy-evaluation / successor-representation backup $c \leftarrow \gamma_{\mathrm{eff}}\,A\,c + r_{\mathrm{eff}}$ along the recovered transition graph $N$.
+\item \textbf{What we evaluated.} We measured the per-tick mechanistic signatures that separate this backup from value iteration and from an amortized/relaxation null: the stationarity of the attention operator across ticks ($\cos(A_t,A_{t-1})$, top-1 mass, support size), the contraction rate $\rho$ of $\lVert \Delta h \rVert$, and the decodability of the value field (ridge $R^2$ against BFS distance-to-target). We then decoded the value per tick and applied the model's own operator, regressing $v_{t+1}$ on $A_t v_t$ to read off the backup coefficient.
+\item \textbf{Hypothesis.} If a Bellman-style backup is iterated over thinking ticks, the value field should rise then plateau and the own-operator coefficient on $A\cdot v$ should be high and in $(0,1)$ across ticks; an amortized substrate instead shows a flat field and a coefficient that collapses to $\approx 0$ after the first tick.
+\item \textbf{What we found.} The attention operator is stationary across ticks ($\cos(A_t,A_{t-1})\to 0.995$, top-1 mass $\approx 0.16$ over $\sim 85$ keys, no sharpening); the hidden contracts ($\rho\approx 0.89$). Decoding the value per tick and applying the model's OWN operator, the coefficient on $A\cdot v$ is $\approx 0.23$ at tick $1$ and $\approx 0$ thereafter; the value field is static after tick $1$.
+\item \textbf{Interpretation.} The per-tick update has the FORM of a value-propagation backup (a convex average, not a max), but it is applied amortized: the value is computed in essentially one step, not iterated over thinking ticks.
+\item \textbf{Conclusion.} The value is an AMORTIZED fixed substrate; the thinking ticks do not iteratively propagate value.
+\end{itemize}
+\clearpage
+
+\subsection*{5. Box-push value over ticks: the decisive amortization test}
+\textit{Script: \texttt{experiments/interp/box\_prop\_attn.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM ($D=3$ entmax) at its $300\mathrm{M}$-step Sokoban checkpoint on held-out \texttt{valid\_medium}, and cross-check the pretrained $2\mathrm{B}$-step DRC$(3,3)$ convolutional planner. From each initial board we recompute the thinking ticks, taking the top-layer per-cell hidden state $h_t(s)$ at every tick $t$ as the cell's representation of board square $s$.
+\item \textbf{What we evaluated.} The ground-truth quantity is the task-faithful box-push value: per cell $s$ we run BFS on the push graph (a box at $b$ can move to $b{+}d$ only if $b{+}d$ is free and the agent-stand cell $b{-}d$ is free) to get the box-push distance $d_B(s)$ to the nearest target, giving $V_{\mathrm{box}}(s)=\gamma^{d_B(s)}$. We decode this value from $h_t(s)$ per tick and ask whether it changes across ticks by applying the model's own attention operator and regressing the per-tick update onto (i) the operator-applied value at $s$ (the own-operator coefficient) and (ii) the mean value of $s$'s graph neighbours (the graph-neighbour-mean coefficient).
+\item \textbf{Hypothesis.} If the thinking loop propagates value, the decoded box-push value should move substantially across ticks ($\lVert\Delta v\rVert/\lVert v\rVert$ large and sustained) and each cell's update should track its graph neighbours' value with a non-vanishing operator/neighbour coefficient that persists beyond tick~1; if the value is amortized, both signatures collapse to near zero after a single tick.
+\item \textbf{What we found.} On the task-faithful box-push value, $\lVert\Delta v\rVert/\lVert v\rVert$ over ticks goes $0.01\to0$ (static); the own-operator coefficient is $0.23$ at tick 1 $\to0.01$ settled; the graph-neighbour-mean coefficient $0.13\to0.01$.
+\item \textbf{Interpretation.} Even using the model's own operator and the correct (box-pushing) value, the value does not propagate over ticks beyond a single tick-1 step.
+\item \textbf{Conclusion.} Confirms directly that the value is amortized (computed once), not propagated across thinking ticks --- the same on the convolutional planner.
+\end{itemize}
+\clearpage
+
+\subsection*{6. Reach over ticks: information arrival at the agent (E5)}
+\textit{Script: \texttt{experiments/interp/e5.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM (depth $D=3$, entmax) at the 300M-step Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. For each board we decode the tile layout, locate the agent, and compute BFS graph-distances; per-tick cell states are obtained by recomputing the depth-$3$ recurrence over $K$ thinking ticks from the board embedding, yielding latents $h_t$ of shape $(K,B,S,C)$.
+\item \textbf{What we evaluated.} On each board we perturb a single floor cell at graph-distance $d$ from the agent (flip floor $\to$ wall) and measure the induced shift in the \emph{agent} cell's latent, $\lVert \Delta h_t(\text{agent}) \rVert$, at every tick $t$. Averaging over boards per distance, we read off the arrival tick (first tick reaching $\geq 50\%$ of the final shift), the horizon (largest $d$ that has arrived by each tick), and the slope of arrival-tick versus $d$.
+\item \textbf{Hypothesis.} A single $\sim 3$-hop attention kernel cannot reach $d=8$ in one tick, so if far perturbations influence the agent and that influence arrives \emph{later} for larger $d$, intermediate cells must relay it across ticks --- compounding reach. The supporting signature is an arrival tick that rises with $d$ (a horizon that grows roughly $k$ hops per tick); the null is far-$d$ influence either never arriving or appearing flat at tick $1$.
+\item \textbf{What we found.} A perturbation $d$ hops from the agent reaches the agent's latent only after $\sim d$ ticks (about one graph-hop per tick), building from $\approx 0$; the integration horizon grows with the thinking budget.
+\item \textbf{Interpretation.} Information from graph-distant cells reaches the agent's decision over the thinking ticks, relationally ($\sim 1$ hop/tick). This is information \emph{arriving} at the decision, the enabler of long-range integration --- not the per-cell value field propagating.
+\item \textbf{Conclusion.} Thinking ticks let the agent's decision integrate progressively farther graph information --- the reach that makes decision-time planning possible.
+\end{itemize}
+\clearpage
+
+\subsection*{7. Bellman self-consistency of the value field}
+\textit{Script: \texttt{experiments/interp/bellman.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) Sokoban checkpoint ($\sim$300M steps), evaluating on held-out \texttt{valid\_medium} boards. The agent is rolled out greedily through the deterministic environment, recording states, actions, and rewards; per-tick cell states (and hence $V$ and the greedy policy) are read from the crash-free \texttt{recompute\_d3} hidden states followed by the critic/actor head matmuls. Successor states are obtained from the real environment by deterministically reloading each level, replaying the recorded greedy actions to reach $s_k$, and then branching every action.
+\item \textbf{What we evaluated.} Along the greedy trajectory $s_0\to s_1\to\cdots$, we measure the optimality (value-iteration) residual $\mathrm{resid}_k = V(s_k) - \max_a[r_a + \gamma\,V(s'_{k,a})]$, where successors $s'_{k,a}$ are generated by branching all actions at each depth via deterministic env replay. We also compute the cheap on-policy TD residual $V(s_t) - (r_t + \gamma\,V(s_{t+1}))$, and report the optimality residual normalized by $\mathrm{std}(V)$ as a function of depth.
+\item \textbf{Hypothesis.} If the weight-tied operator makes every state perform the same max-backup, then $V(s)\approx\max_a[r_a + \gamma\,V(s')]$ should hold not only at the agent (depth $0$) but recursively at the states it transitions into (depths $1,2,\dots$); a residual that is low and \emph{flat} across depth is the signature that $V$ is a fixed point everywhere, whereas a residual that grows with depth would indicate a bounded effective depth.
+\item \textbf{What we found.} Optimality residual $/\,\mathrm{std}(V)=[0.19,0.25,0.25,0.22]$ at the agent and at greedy successors $0$--$3$ (low and flat).
+\item \textbf{Interpretation.} The amortized value is recursively self-consistent: $V(s)\approx\max_a[r+\gamma V(s')]$ holds not only at the agent but at the states it transitions into.
+\item \textbf{Conclusion.} The value the agent plans over is a coherent, recursively-consistent value, not a one-off heuristic.
+\end{itemize}
+\clearpage
+
+\subsection*{8. One-step lookahead consistency of the policy}
+\textit{Script: \texttt{experiments/interp/lookahead.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM ($D=3$, entmax) at its $300\mathrm{M}$-step Sokoban checkpoint, loaded with \texttt{load\_train\_state} on the held-out \texttt{valid\_medium} levels (with deterministic, sequential level loading verified across resets). For each board's agent state $s_0$ we obtain the per-tick cell states via the crash-free \texttt{recompute\_d3} pathway (faithful to the model; self-test $1.8\times10^{-7}$), then apply the MLP and the actor/critic head matmuls directly rather than calling the model's \texttt{get\_action}/\texttt{get\_logits\_and\_value}, which hit a \texttt{rel\_bias}-gather tracer error under \texttt{nn.scan}.
+\item \textbf{What we evaluated.} For each action $a$ we step the real environment into the successor $s'_a$, read the model's OWN value $V(s'_a)$ at full thinking depth, and form $Q_a = r_a + \gamma\,V(s'_a)$ (zeroed on terminal transitions). We then measure how often the policy's chosen action $a^* = \arg\max_a \mathrm{logits}(s_0)$ agrees with the one-step-lookahead choice $a_{\mathrm{LA}} = \arg\max_a Q_a$, and how this agreement varies with the thinking depth $d=1\ldots K$ at which $a^*$ is read.
+\item \textbf{Hypothesis.} If the policy evaluates actions at the states they transition INTO, its choice should be consistent with one-step lookahead over its own value; and if the thinking loop is what carries out that lookahead, the consistency should RISE with thinking depth.
+\item \textbf{What we found.} The chosen action agrees with $\arg\max_a[r_a+\gamma V(s'_a)]$ over the model's OWN value at $0.41$ (chance $0.25$), rising $0.34\to0.41$ with thinking depth.
+\item \textbf{Interpretation.} The action is consistent with evaluating successors by the model's own value, and the consistency grows with deliberation.
+\item \textbf{Conclusion.} The decision is value-greedy over the learned graph, and more thinking sharpens that consistency.
+\end{itemize}
+\clearpage
+
+\subsection*{9. Reward-relabel: a value, not a successor representation (E2)}
+\textit{Script: \texttt{experiments/interp/e2.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$ entmax core, $300$M Sokoban checkpoint) on held-out \texttt{valid\_medium} boards. For each board we re-decode the tiles, then obtain the per-tick cell states by re-running the recurrent core for $K$ ticks from the convolutional embedding (\texttt{recompute\_d3}), taking the final-tick top hidden $h_2$ over all $S=H\times W$ cells; every edited board is re-decoded to verify the edit landed.
+\item \textbf{What we evaluated.} We relocate the target to a far floor cell (changing the \emph{reward} location while keeping the transitions $P$ fixed) and, as a matched control, flip that same far cell to a \emph{wall} (changing $P$, keeping the reward). We then measure the relative recurrent-latent shift $\lVert\Delta h_2\rVert/\lVert h_2\rVert$ at cells lying outside the $\sim 7\times7$ conv receptive field of both edits (Euclidean distance $\ge 4$, so the shift is propagated rather than conv leakage), together with the agent-cell shift and the readout value $V$.
+\item \textbf{Hypothesis.} The per-tick operator is a fixed convex-average resolvent $(I-\gamma_{\text{eff}}A)^{-1}r_{\text{eff}}$; the test distinguishes two members. Under \emph{policy evaluation} the reward is baked into the iterate, so moving the goal re-forms the value field even far from the goal ($\lVert\Delta h_2\rVert$ for the reward-move $\approx$ that of the wall-flip); under a \emph{successor representation} the loop builds reward-agnostic occupancy features and reward enters only at the readout, so the far latent stays nearly unchanged while $V$ still shifts.
+\item \textbf{What we found.} Moving the goal/source re-forms the value field far from the goal (far-node value shift $0.35$) versus a matched wall-flip control ($0.22$), ratio $1.55$.
+\item \textbf{Interpretation.} The reward/source is baked into the iterate (a policy-evaluation-type value), not a reward-agnostic successor/occupancy representation.
+\item \textbf{Conclusion.} The field is a genuine reward-laden value over the graph, with the source in the iterate.
+\end{itemize}
+\clearpage
+
+\subsection*{10. Goal/box edits move the value as predicted (E6b)}
+\textit{Script: \texttt{experiments/interp/e6b.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) 300M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. Per-tick top-cell states are obtained by re-running the recurrent core for $K=16$ thinking ticks on each board's embedding (via \texttt{recompute\_d3}), and the trained critic head is applied at every tick to read the value $V_t$. We then construct edited copies of each board by relocating either the goal or a plain box to the far (opposite) side, re-decoding the tiles to verify the edit landed cleanly.
+\item \textbf{What we evaluated.} At each thinking tick $t$ we measure $\Delta V_t = V_t^{\text{edit}} - V_t^{\text{clean}}$ and correlate it across boards with $-\Delta\text{dist}$, the (negated) change in the relevant geodesic distance over the non-wall graph: agent$\rightarrow$goal distance for a goal move, and box$\rightarrow$nearest-target distance for a box move. We also report the final-tick magnitude $|\Delta V|/\sigma(V)$ for each edit type.
+\item \textbf{Hypothesis.} If the value is a policy-evaluation field tied to the task's reward structure, relocating the reward source should shift $V$ in the resolvent-predicted direction (closer source $\Rightarrow$ higher value), giving a positive $\mathrm{corr}(\Delta V, -\Delta\text{dist})$; a box move should register if the value is box-push-aware.
+\item \textbf{What we found.} Relocating the goal/box shifts the readout value in the resolvent-predicted direction, $\mathrm{corr}(\Delta V,-\Delta\mathrm{dist})=+0.18/+0.16$ (goal/box); a box move shifts it more ($1.5\sigma$) than a goal move ($1.0\sigma$).
+\item \textbf{Interpretation.} The value tracks edits to the reward source in the predicted direction; box edits dominate, fitting the box-pushing task.
+\item \textbf{Conclusion.} The value is causally tied to the task's reward structure on the graph.
+\end{itemize}
+\clearpage
+
+\subsection*{11. The operator does not re-route under edits (E7/E7b)}
+\textit{Script: \texttt{experiments/interp/e7.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) $300$M Sokoban checkpoint and load it with the held-out \texttt{valid\_medium} boards (here $160$ boards, loaded sequentially). For each board we take the settled per-tick cell states and read off the head-averaged top-cell attention operator $A$ at the last thinking tick, both on the original board and on an edited copy.
+\item \textbf{What we evaluated.} We measured operator-level signatures directly from $A$ (not from the value head). Per board we injected one edit -- moving the goal, dropping a wall on the agent-to-goal geodesic, or sliding a box to an adjacent floor cell -- and computed, for every non-wall query cell, the mean attention mass it places on a target cell. From this we read whether the reward anchor relocates to the moved goal and whether $A$ stops routing mass into a now-blocked cell (and re-opens a vacated one).
+\item \textbf{Hypothesis.} If the propagation mechanism $V=(I-\gamma A)^{-1}r$ re-forms per board, then under an edit $A$ should re-anchor to the new reward source and re-route around new obstacles: mass onto a newly-walled or box-occupied cell should drop and mass onto a vacated cell should rise.
+\item \textbf{What we found.} Under a single injected edit the attention operator is near-invariant: row-change near/far ratio $1.1\times$, and the neighbours of a newly-placed wall keep their edges to it.
+\item \textbf{Interpretation.} The graph operator is fixed and content-derived per board; it does not re-wire tick-to-tick in response to an edit.
+\item \textbf{Conclusion.} Planning works by carrying value content over a fixed operator, not by re-wiring the graph.
+\end{itemize}
+\clearpage
+
+\subsection*{12. The value adopts new physics (E9)}
+\textit{Script: \texttt{experiments/interp/e9.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) at the 300M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. From each board we recover the agent$\to$goal shortest path and edit the observation by inserting a single new wall, either ON-PATH (on the geodesic) or OFF-PATH (far from it, as a control). We then give the model extended thinking ($K=16$ ticks) and recompute the per-tick cell states for the original and the two edited boards.
+\item \textbf{What we evaluated.} For each board we read the critic value out of the cell states at every thinking tick and measure the change $dV$ induced by the wall edit, normalized by the value's standard deviation. We relate this to the wall's geometric consequence, the change in goal geodesic length $\Delta d$, computing both the mean value change for on- vs. off-path walls and the correlation $\mathrm{corr}(dV_{\text{on}}, -\Delta d)$ across ticks.
+\item \textbf{Hypothesis.} If the value field reflects the true transition structure, an on-path wall (which lengthens the geodesic, $\Delta d \geq 0$) should LOWER the value in proportion to the added detour, while an off-path wall ($\Delta d \approx 0$) should barely move it; the signature is $dV_{\text{on}} \ll dV_{\text{off}}$ with $\mathrm{corr}(dV_{\text{on}}, -\Delta d) > 0$, and the effect needing thinking ticks to develop.
+\item \textbf{What we found.} A path-blocking wall on the agent's route (outside its local view) lowers the value by $-1.3\sigma$ versus $-0.35\sigma$ for an off-path wall; the effect builds over thinking ticks.
+\item \textbf{Interpretation.} The value field reflects the actual (edited) transition structure --- a newly-blocked path lowers value --- and the effect develops over ticks.
+\item \textbf{Conclusion.} The agent plans over the real, current graph: edits to feasibility re-shape the value.
+\end{itemize}
+\clearpage
+
+\subsection*{13. A far change reaches the agent and re-plans its action (E10)}
+\textit{Script: \texttt{experiments/interp/e10.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D{=}3$, entmax) $300$M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. For each board we recover the per-cell latent field by re-running the $D{=}3$ recurrent core for $K$ ticks over the cell embeddings, giving a per-tick state $h$ for every grid cell, including the agent's own square.
+\item \textbf{What we evaluated.} On the agent-to-goal geodesic we insert a path-blocking wall placed \emph{outside} the agent's $\sim 7\times 7$ conv view and verified to lengthen the path, so any effect at the agent must arrive by recurrent propagation rather than local pixels. We measure two quantities relative to a distance-matched off-path wall: the relative shift of the agent's own cell latent $\lVert dh(\text{agent})\rVert / \lVert h\rVert$ per tick, and the rate at which the agent's greedy action changes.
+\item \textbf{Hypothesis.} If a far, decision-relevant change is integrated back into the agent's decision, then an on-path wall should shift the agent's own cell latent (building over ticks) and flip its greedy action substantially more than an off-path wall at matched distance; on-path $\gg$ off-path on both signals is the signature that supports this.
+\item \textbf{What we found.} A path-blocking wall OUTSIDE the agent's conv view shifts the agent's OWN cell latent $2.2\times$ more than an off-path wall (building over ticks) and changes its greedy action $3\times$ more often.
+\item \textbf{Interpretation.} A far, decision-relevant change is integrated into the agent's decision over ticks and re-plans the move --- direct causal evidence that the action integrates long-range information.
+\item \textbf{Conclusion.} The action is determined by graph-distant information: the core causal signature of decision-time planning.
+\end{itemize}
+\clearpage
+
+\subsection*{14. The plan is the value's gradient (E11)}
+\textit{Script: \texttt{experiments/interp/e11.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM ($D=3$, entmax), the $300$M Sokoban checkpoint, on held-out \texttt{valid\_medium} boards. For each board the per-tick, per-cell top-layer latent $h(s)$ is recomputed across the $K$ thinking ticks, and ground-truth BFS distance-to-goal yields the greedy move-direction at every non-wall cell for supervision.
+\item \textbf{What we evaluated.} We linear-probe $h(s)$ to the $4$-way greedy move-direction on held-out boards per tick, then test plan coherence by following the decoded action field from the agent (does it reach the goal?) and measuring the fraction of cells pointing goalward (toward lower BFS-distance). Finally we decode value $V(s)=\gamma^{d}$, take its gradient (the max-value neighbour), and check it agrees with the directly-decoded action.
+\item \textbf{Hypothesis.} Value sits on every cell and the action is its gradient: from each cell we should decode "the action it wants," and the field of those actions is the plan --- a policy field present wherever value is, distinct from a stored executed sequence.
+\item \textbf{What we found.} The per-cell greedy action is decodable at $0.44$ (chance $0.25$), $61\%$ of cells point goalward, and the decoded action equals the value gradient (move toward the higher-value neighbour).
+\item \textbf{Interpretation.} The plan is the gradient of the value field --- a decodable policy field present wherever value is, not a stored action sequence.
+\item \textbf{Conclusion.} The decision is read off the value as its greedy gradient; the plan IS the value's greedy field.
+\end{itemize}
+\clearpage
+
+\subsection*{15. No outward plan frontier in the dense core (E12)}
+\textit{Script: \texttt{experiments/interp/e12.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the state-indexed attention-LSTM (D$=3$, entmax) at its $300$M-step Sokoban checkpoint on held-out \texttt{valid\_medium} boards. For each board we recompute the depth-$3$ core over $K$ thinking ticks and read out the top-layer per-cell state $h_t(s)$ at each tick, after binding cells to environment positions via the decoded tile map.
+\item \textbf{What we evaluated.} For every thinking tick $t$ we fit a ridge direction probe $h_t(s)\!\to\!$ greedy move and measure held-out decoded-action accuracy and goalward fraction, binned by BFS graph-distance-to-goal into bands $d\,1\text{--}2$, $3\text{--}5$, $6\text{--}8$, $9{+}$. We then record, per band, the change in accuracy from tick $1$ to tick $K$ and the first tick at which the goalward fraction exceeds $0.5$.
+\item \textbf{Hypothesis.} If the plan grows like a frontier, near-goal bands should decode a correct action early while far bands rise only at LATER ticks, giving a staggered near$\to$far onset; if the field is set at once, all distance bands stay flat across ticks. The aggregate flatness reported in E11 could hide either signature, so the band-wise onset is the discriminating test.
+\item \textbf{What we found.} The per-cell decoded action is flat across all thinking ticks at every distance-to-goal band (onset simultaneous, no staggered near$\to$far front); replicated at $192$ and $512$ boards.
+\item \textbf{Interpretation.} A dense (global) routing has no ring-by-ring wavefront, consistent with an amortized value; the over-ticks dynamic is not a spatial sweep of the per-cell field.
+\item \textbf{Conclusion.} For the dense core there is no outward plan frontier --- what moves over ticks is the agent's decision, not a spatial field.
+\end{itemize}
+\clearpage
+
+\subsection*{16. The model's own decision improves over ticks (E13)}
+\textit{Script: \texttt{experiments/interp/e13.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the state-indexed attention-LSTM ($D=3$, entmax) at the $300$M Sokoban checkpoint, evaluated on held-out \texttt{valid\_medium} boards. From each board's embedding we recompute the per-tick hidden state $\theta_t$ for $K$ thinking ticks, then apply the model's own trained actor and critic heads to each tick's board hidden state (\texttt{dense\_list\_0}$\to$\texttt{actor.Output}/\texttt{critic.Output}), exactly the global readout the policy itself uses. Boards are stratified by agent$\to$goal BFS distance into bands $d\,1$--$3$, $4$--$7$, $8$--$12$, $\geq 13$.
+\item \textbf{What we evaluated.} For every tick we read out the model's action $\arg\max$ of the actor logits and its scalar state-value, and measure: (i) the change rate of the action versus the settled tick, (ii) the optimality of the action, i.e.\ the fraction that is goalward as defined by the BFS greedy first move, broken out by distance band, and (iii) the state-value $V_t$ with its per-tick settling $|\Delta V_t|$ and the decision margin (top-$1$ minus top-$2$ logit).
+\item \textbf{Hypothesis.} If the thinking ticks integrate reward information from graph-distant states into the action, the model's own decision should change over ticks and become more goalward, with the largest gain on far boards where the determining information must travel further --- the signature E12's per-tick decodability probe could not see.
+\item \textbf{What we found.} Reading the model's own actor head per tick: the action changes on $35\%$ of boards (tick 1 vs settled), grows more goalward ($0.52\to0.60$, chance $0.25$), most for far states ($+0.15$ at distance $\geq13$ vs $+0.07$--$0.10$ near); the decision margin sharpens $1.6\to3.3$ and the global value contracts $|\Delta V|\,0.72\to0.23$.
+\item \textbf{Interpretation.} The DECISION itself improves over thinking ticks, by an amount that grows with how far the determining information is --- the action gets better with deliberation.
+\item \textbf{Conclusion.} Decision-time planning: more thinking integrates farther graph information into the action and improves it, most on the hardest states.
+\end{itemize}
+\clearpage
+
+\subsection*{17. The convolutional planner: cellwise value and plan (DRC)}
+\textit{Script: \texttt{experiments/interp/drc\_box\_gpi.py}}
+\begin{itemize}
+\item \textbf{Setup.} We probe the prior-work pretrained $2$B-step DRC$(3,3)$ convolutional recurrent planner on held-out Sokoban boards. For each board we run the network forward over thinking ticks and read out per-cell states from the top ConvLSTM layer's hidden map at every tick (cell $=$ spatial position, with its $C$-dim feature vector), giving a per-tick, per-cell representation aligned to the grid.
+\item \textbf{What we evaluated.} The ground truth is box-centric: by BFS on the Sokoban push graph (a box at $b$ can be pushed to $b{+}d$ only if $b{+}d$ is free and the agent-stand cell $b{-}d$ is free) we compute, per cell, the box-push distance to the nearest target $d_B$, the value $V_{\mathrm{box}}=\gamma^{d_B}$, and the optimal first-push direction. From the cell states we fit ridge decoders for $V_{\mathrm{box}}$ (reported as $R^2$) and for the push direction (4-way accuracy), and we track both per tick and stratified by push-distance band.
+\item \textbf{Hypothesis.} If the convolutional planner carries the same cellwise value/plan structure, then $V_{\mathrm{box}}$ should be decodable, the decoded push direction should be greedy with respect to the decoded value (and match the optimal push), and direction accuracy at graph-distant cells should rise across thinking ticks as a near-to-far (outward) frontier.
+\item \textbf{What we found.} On the pretrained 2B DRC$(3,3)$: box-push direction decodable $0.68$ (chance $0.25$); the decoded value's gradient is the optimal push $0.75$; the decoded plan equals the value gradient $0.55$; far-band push-direction rises $0.46\to0.69$ over ticks.
+\item \textbf{Interpretation.} The masked (convolutional) planner carries the same cellwise value $+$ greedy-plan structure; with local routing the plan refines as a (weak) outward frontier at far cells.
+\item \textbf{Conclusion.} The prior-work conv planner plans the same way --- a value with a greedy plan over it, refined for far cells over ticks --- the masked counterpart of the dense (attention) instance.
+\end{itemize}
+\clearpage
+
+\subsection*{18. The convolutional planner's value is causal and amortized (DRC)}
+\textit{Script: \texttt{experiments/interp/drc\_causal.py}}
+\begin{itemize}
+\item \textbf{Setup.} We use the pretrained $2$B DRC$(3,3)$ on held-out \texttt{valid\_medium} Sokoban boards, decoding tiles to recover the wall/floor/target layout of each board. Per-tick cell states are obtained by embedding the observation once and then unrolling the ConvLSTM cells for $T$ thinking ticks (\texttt{apply\_cells\_once}), reading the top-layer hidden state $h$ reshaped to a per-cell grid at each tick.
+\item \textbf{What we evaluated.} On each board we add an on-path wall that lengthens the box-push path (chosen to maximize the BFS box-distance increase) versus a cosmetic off-path wall that leaves all box-distances unchanged. A ridge probe fit on settled cell states decodes a cellwise value $\gamma^{d_B}$; we then measure, per tick, the change in decoded value $\widehat{\Delta V}$ on affected cells, its correlation with the ground-truth $\Delta V^{*}$, and the on-path-vs-off-path magnitude ratio.
+\item \textbf{Hypothesis.} If the decoded value is causally tied to box-push physics, the on-path wall should re-form the decoded cellwise value in the ground-truth-predicted direction, by substantially more than the cosmetic wall, and this response should be concentrated at the planning step rather than absent.
+\item \textbf{What we found.} An on-path wall that lengthens the box-push path re-forms the DRC's decoded cellwise value $2.5$--$5\times$ more than a cosmetic wall, in the predicted direction; the response is front-loaded (largest at tick $1$).
+\item \textbf{Interpretation.} The conv planner's value is causally tied to box-push physics, and like the attention core the response is front-loaded (amortized).
+\item \textbf{Conclusion.} The convolutional value is a real, physics-sensitive value and is amortized --- matching the attention instance.
+\end{itemize}
+\clearpage
+\end{document}
