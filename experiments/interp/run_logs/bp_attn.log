@@ -1,0 +1,12 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== ATTENTION box-push value propagation (step=58593, B=192, K=8) =====
+  ||dV_box||/||V|| per tick (static if ~0): [0.01 0.01 0.01 0.00 0.00 0.00 0.00]
+  own-A   V_t~a*(A v)+b*v : a [0.23 0.11 0.01 0.04 0.03 -0.01 -0.01]  R^2 [0.65 0.78 0.83 0.88 0.90 0.92 0.94]  settled a=+0.01
+  graph-N V_t~a*(Nmean v)+b*v : a [0.13 0.06 0.02 0.02 0.01 0.01 0.02]  settled a=+0.01
+PLOT_ATTNPROP={'dv': [0.008, 0.007, 0.006, 0.005, 0.004, 0.004, 0.003], 'aA': [0.233, 0.106, 0.012, 0.038, 0.034, -0.005, -0.005], 'aN': [0.125, 0.059, 0.025, 0.02, 0.011, 0.011, 0.018]}
+========================================================================================
+DONE_EXIT=0

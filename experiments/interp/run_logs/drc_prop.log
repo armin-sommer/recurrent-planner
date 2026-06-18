@@ -1,0 +1,30 @@
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 54120.05it/s]
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[cfg.json] no extra keys -- using checkpoint dir as-is.
+
+===== DRC(3,3) CONTRACTION + PROPAGATION (step=391200, boards=256, ticks=12) =====
+  [E1] ||h_t - h_(t-1)|| per tick (t=2..12): [0.433 0.363 0.345 0.280 0.246 0.257 0.207 0.193 0.196 0.160 0.154]
+       ratio delta_t/delta_(t-1)           : [ .  0.838 0.951 0.811 0.879 1.044 0.807 0.930 1.019 0.813 0.963]   (does not clearly contract)
+       ||h_t|| per tick                    : [0.595 0.640 0.638 0.624 0.630 0.635 0.624 0.632 0.636 0.627 0.633 0.638]
+  [E5] mean influence ||dh_t(s)|| by graph-distance from ablated cell, per tick:
+        tick \ band      d0-1     d2-3     d4-5     d6-7     d8-+
+           1          0.142    0.081    0.022    0.002    0.001
+           2          0.133    0.088    0.048    0.025    0.015
+           3          0.130    0.089    0.055    0.035    0.023
+           4          0.137    0.093    0.059    0.039    0.027
+           5          0.137    0.097    0.065    0.045    0.030
+           6          0.139    0.099    0.068    0.048    0.032
+           7          0.142    0.102    0.070    0.051    0.035
+           8          0.146    0.104    0.072    0.052    0.037
+           9          0.148    0.107    0.074    0.054    0.038
+          10          0.149    0.109    0.075    0.053    0.037
+          11          0.147    0.111    0.077    0.055    0.038
+          12          0.147    0.109    0.078    0.056    0.039
+       onset tick (reach 50% of settled) per band: [1, 1, 2, 3, 3]
+       --> STAGGERED near->far = LOCAL WAVEFRONT (propagation over ticks)
+PLOT_DRCPROP={'delta': [0.4334, 0.3632, 0.3453, 0.2799, 0.246, 0.2568, 0.2073, 0.1927, 0.1963, 0.1595, 0.1537], 'ratio': [None, 0.838, 0.951, 0.811, 0.879, 1.044, 0.807, 0.93, 1.019, 0.813, 0.963], 'Ib': [[0.1421, 0.0808, 0.0216, 0.0023, 0.0011], [0.1334, 0.0879, 0.0478, 0.0251, 0.0148], [0.1296, 0.0891, 0.0554, 0.0354, 0.0231], [0.1368, 0.093, 0.0592, 0.0392, 0.0273], [0.1368, 0.0966, 0.0646, 0.0448, 0.0303], [0.1388, 0.0992, 0.0683, 0.0478, 0.0323], [0.1418, 0.1016, 0.0698, 0.0509, 0.0348], [0.1462, 0.104, 0.0718, 0.0522, 0.0373], [0.148, 0.1065, 0.0739, 0.0536, 0.0375], [0.1485, 0.1089, 0.0746, 0.0533, 0.037], [0.1471, 0.1107, 0.0772, 0.0546, 0.0375], [0.1468, 0.1093, 0.0778, 0.0558, 0.039]], 'onset': [1, 1, 2, 3, 3], 'bands': ['d0-1', 'd2-3', 'd4-5', 'd6-7', 'd8-+']}
+============================================================================================
+DONE_EXIT=0

@@ -1,0 +1,20 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== D=3 ENTMAX PLANNING MECH-INTERP  (step=58593, boards=256, S=100, K=6, D=3) =====
+  recompute fidelity: model re-check skipped (GPU scan); recompute validated by --self-test=1.8e-7
+  -- Q1 BINDING: decode tile type from h(s) (chance=0.69) --
+     accuracy per tick : [0.63 0.62 0.62 0.62 0.62 0.62]   tick0->K: 0.63 -> 0.62
+  -- Q2 ROUTING: attention mass on wall-masked move-neighbours (final tick) --
+     cell0: on-reachable=0.365  chance=0.027  lift=13.5x  entmax-support=93.5 keys/query
+     cell1: on-reachable=0.351  chance=0.027  lift=13.0x  entmax-support=39.2 keys/query
+     cell2: on-reachable=0.208  chance=0.027  lift=7.7x  entmax-support=84.5 keys/query
+  -- Q3 PLANNING: value field + plan + propagation per tick --
+     value R^2 (dist-to-target): [0.20 0.17 0.14 0.12 0.14 0.14]  (0.20->0.14)
+     plan acc (greedy dir,ch=.25): [0.47 0.46 0.46 0.45 0.46 0.44]  (0.47->0.44)
+     change-front dist-from-goal : [2.15 2.10 2.11 2.13 2.09]  (no clear outward trend)
+==========================================================================================
+
+DONE_EXIT=0

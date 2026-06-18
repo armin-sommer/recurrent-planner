@@ -1,0 +1,31 @@
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 54120.05it/s]
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[cfg.json] no extra keys -- using checkpoint dir as-is.
+
+===== DRC(3,3) BOX-CENTRIC CELLWISE GPI (step=391200, boards=256, ticks=12, gamma=0.97) =====
+  mean #pushable cells/board=19, mean #push-dir cells/board=15
+  (E) box-push value R^2 (h->gamma^pushdist), per tick: [0.33 0.26 0.24 0.21 0.22 0.23 0.21 0.22 0.20 0.21 0.21 0.20]   0.33->0.20
+  (I) box-push dir acc (chance .25), per tick         : [0.68 0.63 0.59 0.62 0.59 0.59 0.58 0.59 0.60 0.62 0.60 0.61]   0.68->0.61
+      dir acc by push-distance band (OUTWARD frontier?):
+        tick \ band    d1-2    d3-5    d6-8    d9-+
+           1         0.72    0.61    0.46     .  
+           2         0.66    0.57    0.51     .  
+           3         0.62    0.53    0.54     .  
+           4         0.66    0.54    0.49     .  
+           5         0.63    0.48    0.57     .  
+           6         0.63    0.52    0.51     .  
+           7         0.61    0.52    0.63     .  
+           8         0.62    0.54    0.54     .  
+           9         0.61    0.54    0.69     .  
+          10         0.63    0.58    0.69     .  
+          11         0.62    0.54    0.71     .  
+          12         0.63    0.55    0.69     .  
+      first tick acc>0.40 per band: [1, 1, 1, -1]  (simultaneous)
+  (C) decoded push-dir == value-gradient, per tick: [0.60 0.52 0.55 0.54 0.52 0.53 0.51 0.52 0.51 0.54 0.52 0.53]
+      value-gradient == optimal push-dir, per tick : [0.76 0.74 0.75 0.74 0.74 0.75 0.73 0.74 0.74 0.74 0.74 0.74]
+PLOT_DRCBOX={'valr2': [0.333, 0.265, 0.241, 0.208, 0.22, 0.228, 0.211, 0.215, 0.198, 0.213, 0.209, 0.201], 'diracc': [0.677, 0.63, 0.591, 0.618, 0.586, 0.595, 0.583, 0.593, 0.597, 0.617, 0.601, 0.611], 'onset': [1, 1, 1, -1], 'accb': [[0.721, 0.61, 0.457, None], [0.661, 0.575, 0.514, None], [0.622, 0.526, 0.543, None], [0.659, 0.539, 0.486, None], [0.631, 0.482, 0.571, None], [0.629, 0.522, 0.514, None], [0.606, 0.522, 0.629, None], [0.62, 0.535, 0.543, None], [0.613, 0.544, 0.686, None], [0.629, 0.579, 0.686, None], [0.618, 0.544, 0.714, None], [0.633, 0.548, 0.686, None]], 'gradagree': [0.598, 0.522, 0.551, 0.536, 0.523, 0.527, 0.513, 0.52, 0.511, 0.544, 0.524, 0.532], 'gradopt': [0.755, 0.739, 0.745, 0.738, 0.744, 0.75, 0.729, 0.737, 0.737, 0.744, 0.74, 0.735]}
+============================================================================================
+DONE_EXIT=0

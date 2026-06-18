@@ -1,0 +1,35 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E12: DOES THE PLAN EXPAND OUTWARD? (step=58593, boards=192, test=39, K=8, chance 0.25) =====
+  decoded-action ACCURACY by distance-to-goal band, per tick:
+     tick \ band    d1-2   d3-5   d6-8   d9-+
+        1         0.47   0.43   0.41   0.46
+        2         0.43   0.43   0.37   0.50
+        3         0.42   0.42   0.40   0.48
+        4         0.41   0.42   0.41   0.46
+        5         0.40   0.42   0.42   0.47
+        6         0.41   0.42   0.44   0.48
+        7         0.42   0.42   0.44   0.47
+        8         0.41   0.43   0.43   0.47
+  GOALWARD fraction by band, per tick:
+        1         0.51   0.52   0.51   0.51
+        2         0.47   0.53   0.45   0.55
+        3         0.48   0.51   0.48   0.53
+        4         0.46   0.51   0.50   0.51
+        5         0.44   0.50   0.48   0.52
+        6         0.46   0.50   0.51   0.51
+        7         0.47   0.50   0.51   0.51
+        8         0.46   0.49   0.52   0.50
+  per-band change tick1->K (accuracy):
+       d1-2: 0.47 -> 0.41  (delta -0.06)
+       d3-5: 0.43 -> 0.43  (delta -0.01)
+       d6-8: 0.41 -> 0.43  (delta +0.02)
+       d9-+: 0.46 -> 0.47  (delta +0.01)
+  first tick goalward>0.5 per band: [1, 1, 1, 1]  (simultaneous / no clear outward frontier)
+PLOT_E12={'bands': ['d1-2', 'd3-5', 'd6-8', 'd9-+'], 'acc': [[0.471, 0.434, 0.413, 0.456], [0.431, 0.434, 0.37, 0.497], [0.416, 0.424, 0.399, 0.484], [0.409, 0.418, 0.406, 0.459], [0.401, 0.421, 0.42, 0.466], [0.412, 0.418, 0.438, 0.481], [0.42, 0.424, 0.441, 0.475], [0.409, 0.426, 0.431, 0.466]], 'gw': [[0.507, 0.518, 0.505, 0.506], [0.474, 0.532, 0.448, 0.553], [0.482, 0.505, 0.484, 0.534], [0.46, 0.508, 0.498, 0.512], [0.442, 0.497, 0.484, 0.516], [0.464, 0.503, 0.509, 0.512], [0.467, 0.497, 0.505, 0.512], [0.46, 0.495, 0.523, 0.503]], 'onset': [1, 1, 1, 1]}
+============================================================================================
+
+DONE_EXIT=0

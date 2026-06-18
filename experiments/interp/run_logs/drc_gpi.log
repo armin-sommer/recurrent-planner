@@ -1,0 +1,30 @@
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 43690.67it/s]
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[cfg.json] no extra keys -- using checkpoint dir as-is.
+
+===== DRC(3,3) CELLWISE GPI (step=391200, boards=256, S=100, ticks=12, gamma=0.97) =====
+  (E) value R^2 (h(s)->gamma^dist), per tick: [0.14 0.13 0.12 0.11 0.11 0.11 0.10 0.10 0.09 0.09 0.09 0.08]   0.14->0.08
+  (I) greedy-dir acc (chance .25), per tick : [0.47 0.46 0.46 0.45 0.46 0.49 0.49 0.48 0.51 0.49 0.48 0.51]   0.47->0.51
+      dir acc by distance band (OUTWARD frontier?):
+        tick \ band    d1-2    d3-5    d6-8    d9-+
+           1         0.47    0.50    0.44    0.47
+           2         0.45    0.52    0.40    0.43
+           3         0.46    0.49    0.44    0.45
+           4         0.43    0.47    0.47    0.42
+           5         0.44    0.49    0.47    0.44
+           6         0.47    0.52    0.47    0.48
+           7         0.45    0.54    0.50    0.46
+           8         0.45    0.51    0.47    0.47
+           9         0.45    0.55    0.51    0.49
+          10         0.44    0.53    0.52    0.45
+          11         0.44    0.52    0.48    0.47
+          12         0.45    0.54    0.52    0.49
+      first tick acc>0.45 per band: [1, 1, 4, 1]  (simultaneous)
+  (C) decoded policy == value-gradient (cellwise consistency), per tick: [0.44 0.40 0.41 0.41 0.40 0.40 0.40 0.40 0.41 0.41 0.40 0.42]   0.42
+      value-gradient == optimal dir, per tick: [0.62 0.60 0.59 0.59 0.58 0.59 0.59 0.58 0.59 0.58 0.60 0.60]   0.60
+PLOT_DRC={'valr2': [0.138, 0.129, 0.119, 0.107, 0.112, 0.109, 0.104, 0.099, 0.09, 0.093, 0.09, 0.085], 'diracc': [0.472, 0.456, 0.462, 0.449, 0.464, 0.487, 0.49, 0.476, 0.505, 0.489, 0.481, 0.505], 'accb': [[0.471, 0.497, 0.441, 0.47], [0.454, 0.521, 0.399, 0.43], [0.457, 0.489, 0.441, 0.45], [0.429, 0.469, 0.468, 0.422], [0.437, 0.493, 0.473, 0.442], [0.474, 0.517, 0.468, 0.48], [0.448, 0.536, 0.497, 0.462], [0.448, 0.507, 0.468, 0.467], [0.451, 0.55, 0.511, 0.492], [0.44, 0.531, 0.519, 0.452], [0.437, 0.517, 0.481, 0.475], [0.454, 0.542, 0.519, 0.492]], 'onset': [1, 1, 4, 1], 'gradagree': [0.44, 0.399, 0.414, 0.408, 0.398, 0.396, 0.405, 0.401, 0.413, 0.414, 0.404, 0.42], 'gradopt': [0.623, 0.595, 0.585, 0.588, 0.585, 0.592, 0.588, 0.584, 0.587, 0.585, 0.596, 0.598], 'bands': ['d1-2', 'd3-5', 'd6-8', 'd9-+']}
+============================================================================================
+DONE_EXIT=0

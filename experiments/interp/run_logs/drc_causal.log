@@ -1,0 +1,16 @@
+Fetching 2 files:   0%|          | 0/2 [00:00<?, ?it/s]Fetching 2 files: 100%|██████████| 2/2 [00:00<00:00, 46863.73it/s]
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+[cfg.json] no extra keys -- using checkpoint dir as-is.
+
+===== DRC(3,3) CAUSAL box-value reformation (step=391200, boards=160, used=152, ticks=10) =====
+  on-path: decoded dV-hat vs ground-truth dV* CORRELATION (affected cells), per tick: [0.15 0.13 0.09 0.11 0.13 0.14 0.11 0.12 0.11 0.08]
+  |dV-hat| on-path (affected) per tick : [0.01 0.02 0.02 0.02 0.02 0.02 0.02 0.02 0.02 0.02]
+  |dV-hat| off-path (cosmetic) per tick: [0.00 0.00 0.00 0.01 0.01 0.01 0.01 0.01 0.01 0.01]
+  on/off magnitude RATIO per tick      : [4.90 5.24 4.51 3.81 3.39 3.06 2.85 2.77 2.54 2.46]   settled ratio=2.46
+  --> reaches/re-forms: weak/not clearly
+PLOT_DRCCAUSAL={'corr': [0.155, 0.125, 0.094, 0.11, 0.126, 0.138, 0.11, 0.124, 0.111, 0.085], 'mon': [0.0101, 0.0173, 0.0202, 0.0207, 0.0197, 0.0189, 0.018, 0.0172, 0.0159, 0.0153], 'moff': [0.0021, 0.0033, 0.0045, 0.0054, 0.0058, 0.0062, 0.0063, 0.0062, 0.0062, 0.0062], 'ratio': [4.897, 5.244, 4.507, 3.814, 3.385, 3.06, 2.854, 2.766, 2.544, 2.46]}
+============================================================================================
+DONE_EXIT=0

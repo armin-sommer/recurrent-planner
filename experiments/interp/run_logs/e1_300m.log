@@ -1,0 +1,49 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E1: PER-TICK MECHANISM (step=58593, boards=128, S=100, D=3, trained K=6, run K=12, gamma=0.97) =====
+
+-- (A) decodable value field + plan + change-front (probe of top_h per tick) --
+   value R^2 (BFS dist-to-target) : [0.17 0.15 0.14 0.13 0.14 0.12 0.12 0.13 0.13 0.14 0.13 0.12]  (0.17 -> 0.12)
+   plan acc (greedy dir, ch=.25)  : [0.46 0.45 0.45 0.46 0.46 0.46 0.45 0.45 0.43 0.44 0.42 0.42]  (0.46 -> 0.42)
+   change-front dist-from-goal    : [2.11 2.04 2.05 2.06 2.02 2.03 2.02 2.04 2.05 2.04 2.03]  (no outward trend)
+
+-- (B) attention operator A_t over ticks (top cell, head-avg) --
+   top-1 entmax mass / query      : [0.156 0.160 0.159 0.159 0.159 0.159 0.159 0.159 0.159 0.159 0.159 0.159]  (stationary)
+   entmax support (#keys>1e-6)    : [87.00 85.20 84.80 84.77 84.79 84.78 84.57 84.52 84.51 84.44 84.47 84.50]
+   row-cosine cos(A_t, A_t-1)     : [0.946 0.964 0.974 0.979 0.983 0.988 0.989 0.991 0.992 0.994 0.995]  (stationary (>0.9))
+
+-- (C) convergence of the hidden over ticks --
+   ||dh_t|| / ||h_t|| per tick    : [0.477 0.343 0.277 0.232 0.201 0.178 0.159 0.137 0.122 0.111 0.103]
+   ||h_t - h_final||              : [1.097 0.835 0.709 0.619 0.548 0.484 0.423 0.361 0.319 0.255 0.177 0.000]
+   median contraction rho (t>=Ktr): 0.893   -> effective horizon ~1/(1-rho) = 9.3 ticks  (gamma=0.97 would need ~151 from scratch)
+
+-- (D) value WAVEFRONT: R^2(decoded V*) within distance-to-goal bands, per tick --
+    tick d1-2  d3-5  d6-8  d9-99
+       0 -3.19 -1.16 -25.70    . 
+       1 -3.34 -1.29 -25.22    . 
+       2 -3.40 -1.43 -26.45    . 
+       3 -3.59 -1.40 -27.90    . 
+       4 -3.63 -1.46 -27.47    . 
+       5 -3.64 -1.49 -28.73    . 
+       6 -3.57 -1.47 -29.76    . 
+       7 -3.53 -1.52 -28.96    . 
+       8 -3.58 -1.56 -28.87    . 
+       9 -3.65 -1.49 -28.62    . 
+      10 -3.69 -1.54 -27.96    . 
+      11 -3.72 -1.53 -28.48    . 
+   first tick R^2>0.3 per band     : [-1, -1, -1, -1]   (simultaneous / no clear wavefront)
+
+-- (E) own-operator propagation: v_t ~ a*(A_t-1 v_t-1) + b*v_t-1 + c --
+   per-tick (a on A v | b on v | R^2): t1:(+0.16|+0.88|0.70) t2:(+0.14|+0.89|0.81) t3:(+0.03|+0.92|0.84) t4:(+0.04|+0.93|0.89) t5:(-0.01|+0.95|0.90) t6:(-0.00|+0.95|0.92) t7:(-0.01|+0.98|0.94) t8:(+0.02|+0.97|0.95) t9:(-0.00|+0.98|0.96) t10:(+0.01|+0.98|0.97)
+   settled mean: coeff on (A v) = +0.01  (a damped-propagation coeff in (0,1) supports c<-gamma_eff A c + r),  R^2 = 0.93
+
+-- VERDICT --
+   attention operator: STATIONARY -> fixed transition (policy-evaluation / SR), NOT value iteration
+   value computation : flat / amortized substrate (little inference-time iteration)
+   contraction       : rho=0.89 << gamma=0.97 -> AMORTIZED: a few refinement sweeps of a compiled operator, not a from-scratch solve
+================================================================================================
+
+DONE_EXIT=0

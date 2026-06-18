@@ -1,0 +1,281 @@
+[1/4] clone repo @ recurrent-attention-core
+Cloning into 'recurrent-planner'...
+[2/4] clone boxoban levels (full set)
+Cloning into '/opt/sokoban_cache/boxoban-levels-master'...
+Updating files:  95% (1443/1509)Updating files:  96% (1449/1509)Updating files:  97% (1464/1509)Updating files:  98% (1479/1509)Updating files:  99% (1494/1509)Updating files: 100% (1509/1509)Updating files: 100% (1509/1509), done.
+[3/4] build env (uv venv py3.10 + jax cuda12 + envpool fork)
+[build] gym-sokoban submodule
+Cloning into 'third_party/gym-sokoban'...
+[build] uv venv (python 3.10)
+Using CPython 3.10.12 interpreter at: /usr/bin/python3.10
+Creating virtual environment at: .venv
+Activate with: source .venv/bin/activate
+[build] requirements.txt (--no-deps; jax is disabled in it, comes via -e .)
+   Updating https://github.com/rhaps0dy/python-databind.git (merge-fixes)
+    Updated https://github.com/rhaps0dy/python-databind.git (a2646ab2eab543945f1650544990841c91efebd9)
+Resolved 120 packages in 3.82s
+   Updating https://github.com/AlignmentResearch/farconf.git (HEAD)
+   Building databind @ git+https://github.com/rhaps0dy/python-databind.git@a2646ab2eab543945f1650544990841c91efebd9#subdirectory=databind
+Downloading pandas (12.5MiB)
+Downloading pygments (1.1MiB)
+      Built databind @ git+https://github.com/rhaps0dy/python-databind.git@a2646ab2eab543945f1650544990841c91efebd9#subdirectory=databind
+Downloading tensorflow-probability (6.7MiB)
+Downloading virtualenv (4.1MiB)
+Downloading pillow (4.2MiB)
+Downloading scipy (39.3MiB)
+Downloading imageio-ffmpeg (25.7MiB)
+Downloading tensorboard-data-server (6.3MiB)
+Downloading opencv-python (59.7MiB)
+Downloading matplotlib (7.9MiB)
+Downloading ruff (7.2MiB)
+Downloading pyarrow (38.2MiB)
+Downloading numpy (17.4MiB)
+Downloading wandb (9.0MiB)
+Downloading grpcio (5.7MiB)
+Downloading fonttools (4.4MiB)
+Downloading tensorboard (5.4MiB)
+Downloading kiwisolver (1.6MiB)
+Downloading ray (63.7MiB)
+Downloading ml-dtypes (4.3MiB)
+Downloading tensorstore (17.0MiB)
+    Updated https://github.com/AlignmentResearch/farconf.git (55f043ad607ebb29ee50fd20793eb55d958a1e97)
+   Building farconf @ git+https://github.com/AlignmentResearch/farconf.git@55f043ad607ebb29ee50fd20793eb55d958a1e97
+ Downloaded pygments
+   Building moviepy==1.0.3
+ Downloaded kiwisolver
+      Built farconf @ git+https://github.com/AlignmentResearch/farconf.git@55f043ad607ebb29ee50fd20793eb55d958a1e97
+      Built moviepy==1.0.3
+ Downloaded virtualenv
+ Downloaded pillow
+ Downloaded ml-dtypes
+ Downloaded fonttools
+ Downloaded tensorboard
+ Downloaded grpcio
+ Downloaded tensorboard-data-server
+ Downloaded tensorflow-probability
+ Downloaded ruff
+ Downloaded matplotlib
+ Downloaded wandb
+ Downloaded pandas
+ Downloaded numpy
+ Downloaded tensorstore
+ Downloaded imageio-ffmpeg
+ Downloaded scipy
+ Downloaded pyarrow
+ Downloaded opencv-python
+ Downloaded ray
+Prepared 120 packages in 23.74s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 120 packages in 1m 11s
+ + absl-py==2.1.0
+ + aiosignal==1.3.2
+ + attrs==24.3.0
+ + cachetools==5.5.0
+ + certifi==2024.12.14
+ + cfgv==3.4.0
+ + charset-normalizer==3.4.1
+ + chex==0.1.88
+ + click==8.1.8
+ + cloudpickle==3.1.0
+ + cmdkit==2.7.7
+ + contourpy==1.3.1
+ + cycler==0.12.1
+ + databind==4.5.1 (from git+https://github.com/rhaps0dy/python-databind.git@a2646ab2eab543945f1650544990841c91efebd9#subdirectory=databind)
+ + decorator==4.4.2
+ + deprecated==1.2.15
+ + distlib==0.3.9
+ + distrax==0.1.5
+ + dm-env==1.6
+ + dm-tree==0.1.8
+ + docker-pycreds==0.4.0
+ + etils==1.11.0
+ + exceptiongroup==1.2.2
+ + farama-notifications==0.0.4
+ + farconf==0.1.0 (from git+https://github.com/AlignmentResearch/farconf.git@55f043ad607ebb29ee50fd20793eb55d958a1e97)
+ + filelock==3.16.1
+ + flax==0.8.5
+ + fonttools==4.55.3
+ + frozenlist==1.5.0
+ + fsspec==2024.12.0
+ + gast==0.6.0
+ + gitdb==4.0.11
+ + gitpython==3.1.43
+ + google-auth==2.37.0
+ + google-auth-oauthlib==1.0.0
+ + grpcio==1.68.1
+ + gymnasium==0.29.1
+ + huggingface-hub==0.23.5
+ + humanize==4.11.0
+ + identify==2.6.4
+ + idna==3.10
+ + imageio==2.36.1
+ + imageio-ffmpeg==0.5.1
+ + importlib-resources==6.4.5
+ + iniconfig==2.0.0
+ + jsonschema==4.23.0
+ + jsonschema-specifications==2024.10.1
+ + kiwisolver==1.4.8
+ + markdown==3.7
+ + markdown-it-py==3.0.0
+ + markupsafe==3.0.2
+ + matplotlib==3.9.4
+ + mdurl==0.1.2
+ + ml-dtypes==0.5.0
+ + moviepy==1.0.3
+ + msgpack==1.1.0
+ + names-generator==0.1.0
+ + nest-asyncio==1.6.0
+ + nodeenv==1.9.1
+ + nr-date==2.1.0
+ + nr-stream==1.1.5
+ + numpy==1.26.4
+ + oauthlib==3.2.2
+ + opencv-python==4.10.0.84
+ + opt-einsum==3.4.0
+ + optax==0.1.9
+ + orbax-checkpoint==0.11.0
+ + packaging==24.2
+ + pandas==2.2.3
+ + pillow==11.0.0
+ + platformdirs==4.3.6
+ + pluggy==1.5.0
+ + pre-commit==3.6.2
+ + proglog==0.1.10
+ + protobuf==5.29.2
+ + psutil==6.1.1
+ + pyarrow==18.1.0
+ + pyasn1==0.6.1
+ + pyasn1-modules==0.4.1
+ + pygments==2.18.0
+ + pyparsing==3.2.0
+ + pyright==1.1.391
+ + pytest==8.1.2
+ + python-dateutil==2.9.0.post0
+ + pytz==2024.2
+ + pyyaml==6.0.2
+ + ray==2.40.0
+ + referencing==0.35.1
+ + requests==2.32.3
+ + requests-oauthlib==2.0.0
+ + rich==13.9.4
+ + rlax==0.1.6
+ + rpds-py==0.22.3
+ + rsa==4.9
+ + ruff==0.1.15
+ + scipy==1.14.1
+ + sentry-sdk==2.19.2
+ + setproctitle==1.3.4
+ + simplejson==3.19.3
+ + six==1.17.0
+ + smmap==5.0.1
+ + tensorboard==2.12.3
+ + tensorboard-data-server==0.7.2
+ + tensorboardx==2.6.2.2
+ + tensorflow-probability==0.25.0
+ + tensorstore==0.1.71
+ + toml==0.10.2
+ + tomli==2.2.1
+ + toolz==1.0.0
+ + tqdm==4.67.1
+ + typeapi==2.2.3
+ + typing-extensions==4.12.2
+ + tzdata==2024.2
+ + urllib3==2.3.0
+ + virtualenv==20.28.0
+ + wandb==0.17.9
+ + werkzeug==3.1.3
+ + wheel==0.45.1
+ + wrapt==1.17.0
+ + zipp==3.21.0
+[build] editable project + gym-sokoban (pulls jax==0.4.34)
+Resolved 111 packages in 4.15s
+   Building gym-sokoban @ file:///workspace/recurrent-planner/third_party/gym-sokoban
+   Building gym==0.26.2
+   Building train-learned-planner @ file:///workspace/recurrent-planner
+Downloading jaxlib (82.1MiB)
+Downloading jax (2.0MiB)
+      Built gym-sokoban @ file:///workspace/recurrent-planner/third_party/gym-sokoban
+      Built gym==0.26.2
+      Built train-learned-planner @ file:///workspace/recurrent-planner
+ Downloaded jaxlib
+ Downloaded jax
+Prepared 6 packages in 1.97s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 7 packages in 8.46s
+ + gym==0.26.2
+ + gym-notices==0.1.0
+ + gym-sokoban==0.0.5 (from file:///workspace/recurrent-planner/third_party/gym-sokoban)
+ + jax==0.4.34
+ + jaxlib==0.4.34
+ + setuptools==82.0.1
+ + train-learned-planner==1.0.0 (from file:///workspace/recurrent-planner)
+[build] envpool 0.8.4 fork wheel (cp310 linux x86_64)
+Resolved 14 packages in 790ms
+Downloading envpool (1.2MiB)
+ Downloaded envpool
+Prepared 3 packages in 96ms
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 3 packages in 981ms
+ + envpool==0.8.4 (from https://github.com/AlignmentResearch/envpool/releases/download/v0.1.0/envpool-0.8.4-cp310-cp310-linux_x86_64.whl)
+ + optree==0.19.1
+ + types-protobuf==7.34.1.20260518
+[build] CUDA jaxlib -- CRITICAL: '-e .' installs a CPU-only jaxlib, so jax silently runs on CPU (~85x slower). This makes jax use the GPU.
+Resolved 19 packages in 698ms
+Downloading nvidia-nvjitlink-cu12 (37.9MiB)
+Downloading nvidia-cufft-cu12 (191.6MiB)
+Downloading nvidia-cuda-runtime-cu12 (3.3MiB)
+Downloading nvidia-cuda-nvrtc-cu12 (85.4MiB)
+Downloading nvidia-cudnn-cu12 (687.7MiB)
+Downloading nvidia-cublas-cu12 (554.3MiB)
+Downloading nvidia-cusparse-cu12 (349.5MiB)
+Downloading nvidia-cusolver-cu12 (322.5MiB)
+Downloading nvidia-cuda-nvcc-cu12 (38.7MiB)
+Downloading nvidia-cuda-cupti-cu12 (10.3MiB)
+Downloading nvidia-nccl-cu12 (289.3MiB)
+Downloading jax-cuda12-pjrt (95.6MiB)
+Downloading jax-cuda12-plugin (14.2MiB)
+ Downloaded nvidia-cuda-runtime-cu12
+ Downloaded nvidia-cuda-cupti-cu12
+ Downloaded jax-cuda12-plugin
+ Downloaded nvidia-nvjitlink-cu12
+ Downloaded nvidia-cuda-nvcc-cu12
+ Downloaded nvidia-cuda-nvrtc-cu12
+ Downloaded jax-cuda12-pjrt
+ Downloaded nvidia-cufft-cu12
+ Downloaded nvidia-nccl-cu12
+ Downloaded nvidia-cusolver-cu12
+ Downloaded nvidia-cusparse-cu12
+ Downloaded nvidia-cublas-cu12
+ Downloaded nvidia-cudnn-cu12
+Prepared 13 packages in 32.39s
+warning: Failed to hardlink files; falling back to full copy. This may lead to degraded performance.
+         If the cache and target directories are on different filesystems, hardlinking may not be supported.
+         If this is intentional, set `export UV_LINK_MODE=copy` or use `--link-mode=copy` to suppress this warning.
+Installed 13 packages in 2.73s
+ + jax-cuda12-pjrt==0.4.34
+ + jax-cuda12-plugin==0.4.34
+ + nvidia-cublas-cu12==12.9.2.10
+ + nvidia-cuda-cupti-cu12==12.9.79
+ + nvidia-cuda-nvcc-cu12==12.9.86
+ + nvidia-cuda-nvrtc-cu12==12.9.86
+ + nvidia-cuda-runtime-cu12==12.9.79
+ + nvidia-cudnn-cu12==9.23.1.3
+ + nvidia-cufft-cu12==11.4.1.4
+ + nvidia-cusolver-cu12==11.7.5.82
+ + nvidia-cusparse-cu12==12.5.10.65
+ + nvidia-nccl-cu12==2.30.7
+ + nvidia-nvjitlink-cu12==12.9.86
+[build] verify imports + GPU backend
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+BUILD_OK jax 0.4.34 envpool 0.8.4 backend gpu
+[build] BUILD_DONE
+[4/4] ALL_BUILD_DONE

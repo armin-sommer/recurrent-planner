@@ -1,0 +1,12 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+===== BALANCED BINDING (step=58593, boards=256, K=6, chance=0.50) =====
+     wall: [0.77 0.76 0.76 0.75 0.76 0.76]  settled=0.756
+      box: [0.57 0.60 0.59 0.60 0.60 0.60]  settled=0.602
+   target: [0.53 0.54 0.52 0.52 0.53 0.53]  settled=0.528
+    agent: [0.52 0.50 0.53 0.51 0.52 0.53]  settled=0.532
+SETTLED300M wall=0.756 box=0.602 target=0.528 agent=0.532
+======================================================================
+DONE_EXIT=0
