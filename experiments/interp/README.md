@@ -46,6 +46,7 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 - `binding_balanced.py` — the headline **per-object balanced** binding accuracy (chance 0.50), the metric the
   writeup reports: wall/box/target/agent `= 0.74/0.73/0.72/0.78` at the 300M checkpoint, flat across ticks —
   every object class, including the rare movable ones, is decodable from a single cell.
+  (`bind_bal.py`, `bind_bal2.py` are earlier precursor drafts of this probe, kept for provenance.)
 
 **Step 2 — the learned graph (connectivity along `N`)**
 - `e4.py` — the learned kernel: attention mass vs **graph** distance (geometric decay `ρ≈0.66`,
@@ -56,6 +57,10 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 **Step 3 — planning by value propagation**
 - `e1.py` — per-tick operator: attention stationarity vs sharpening + contraction rate (value
   iteration vs evaluation vs null).
+- `box_prop_attn.py` — **the decisive amortization test**: decode the per-cell **box-push** value field at
+  every tick and regress it on the model's own operator applied to the previous tick. The own-operator
+  coefficient is nonzero only on tick 1 (`0.23→0.01`) and `‖Δv‖→0` thereafter — the value field is computed
+  amortized (set by tick 1), **not** re-propagated over thinking ticks. (Imports `_propcommon.py`.)
 - `e5.py` — reach vs ticks: does propagation **compound** (are the pulled-from cells themselves updated)?
 - `bellman.py` — Bellman optimality residual at the agent + greedy successors (recursion depth).
 - `lookahead.py` — policy vs one-step lookahead over the model's **own** value, by thinking depth.
@@ -102,9 +107,15 @@ the per-cell ConvLSTM hidden over thinking ticks (extracted by a manual `apply_c
   physics-sensitive, but front-loaded (largest at tick 1, not building over ticks).
 - `drc_gpi.py` — the agent-navigation baseline (weak: nav-to-target is the wrong value for a box-pushing
   task; value R² 0.14, no frontier). Kept to show why the box-centric quantity is the right one.
+- `box_prop_drc.py` — the DRC analog of `box_prop_attn.py`: the convolutional planner's per-cell box-push
+  value is likewise amortized (front-loaded, `‖Δv‖→0` over ticks). (Imports `_propcommon.py`.)
+- `drc_propagation.py` — earlier DRC propagation probe (per-cell value reach vs ticks); superseded by
+  `drc_box_gpi.py`/`drc_causal.py`, kept for provenance.
 
 **Shared helpers (imported by the probes):** `plan.py` (BFS distance fields, ridge/linear probes,
-`analyse_plan`), `slots.py` (`decode_tiles`, slot-core utilities), `search.py`.
+`analyse_plan`), `slots.py` (`decode_tiles`, slot-core utilities), `search.py`,
+`_propcommon.py` (box-push BFS `bfs_box`, masked-mean, ridge `fit`/`pred`/`reg` — used by the `box_prop_*`
+amortization tests).
 
 **Separate core:** `attn.py` is the earlier slot/attention-core recovery-of-`N` probe (a different core; not
 part of the D=3 suite above), kept here for provenance.
