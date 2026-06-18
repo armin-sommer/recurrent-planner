@@ -470,17 +470,18 @@ graph is thus the $\sigma$-image of $\mathcal{N}$ (Def.~\ref{def:indexed}), as r
 
 \begin{figure}[t]\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=9cm,height=3.0cm,xlabel={graph distance between cells (hops)},ylabel={mean routing weight},
-  xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=9pt,xtick={0,1,2,3,4,5,6,7,8},
-  tick label style={font=\footnotesize},label style={font=\small}]
+\begin{axis}[ybar,width=11cm,height=5.0cm,xlabel={graph distance between cells (hops)},ylabel={mean routing weight},
+  xmin=-0.6,xmax=8.6,ymin=0,ymax=0.23,bar width=20pt,xtick={0,1,2,3,4,5,6,7,8},
+  nodes near coords,every node near coord/.append style={font=\footnotesize,/pgf/number format/.cd,fixed,fixed zerofill,precision=3},
+  tick label style={font=\small},label style={font=\small},ylabel near ticks]
 \addplot[fill=blue!55,draw=blue!60] coordinates {(0,0.007)(1,0.206)(2,0.098)(3,0.062)(4,0.047)(5,0.031)(6,0.024)(7,0.021)(8,0.018)};
 \end{axis}\end{tikzpicture}
-\caption{\textbf{The learned graph (recovery of $\mathcal{N}$).} Mean routing
-(attention) weight vs graph distance between cells, on the \emph{dense} core:
-geometric decay ($\rho\approx0.66$, reach $\sim$3 hops), ${\approx}0$ weight to
-graph-unreachable cells (across walls), a small ${+}0.07$ anchor on the goal cell.
-The dense routing \emph{learns} the transition adjacency $\mathcal{N}$ rather than
-receiving it as a mask.}
+\caption{\textbf{The learned graph (recovery of $\mathcal{N}$).} Source: \textbf{E4}
+(\texttt{experiments/interp/e4.py}). Mean routing (attention) weight vs.\ graph distance
+between cells, on the \emph{dense} core: geometric decay ($\rho\approx0.66$, reach $\sim$3
+hops), ${\approx}0$ weight to graph-unreachable cells (across walls), and a small ${+}0.07$
+anchor on the goal cell. The dense routing \emph{learns} the transition adjacency
+$\mathcal{N}$ rather than receiving it as a mask.}
 \label{fig:kernel}
 \end{figure}
 
@@ -491,7 +492,7 @@ We then ask what the thinking ticks actually compute (Prop.~\ref{prop:improvemen
 The precise finding, which we state carefully: the value field is computed in
 essentially \emph{one} step (amortized), and the thinking ticks instead integrate
 graph-distant information into the \emph{decision} --- most for the hardest states
-(Fig.~\ref{fig:refine}).
+(Figs.~\ref{fig:reach}--\ref{fig:decide}).
 
 \textbf{(i) The value is amortized --- computed in essentially one step.} The
 routing operator is stationary across ticks
@@ -504,9 +505,13 @@ step: decoding the value field per tick and regressing it on the model's
 $v_{t}\approx a\,(\alpha\,v_{t-1})+b\,v_{t-1}$, gives a coefficient $a$ that is
 nonzero \emph{only on the first tick} ($a{\approx}0.23\!\to\!0$), and the per-cell
 value field is static thereafter ($\lVert\Delta v\rVert/\lVert v\rVert:0.01\!\to\!0$).
-So the value is computed by the first tick and not re-derived across ticks (the
-same holds on a box-pushing value target, and on the convolutional planner of
-\S\ref{sec:emp-drc}).
+So the value is computed by the first tick and not re-derived across ticks
+(\textbf{E1}, \texttt{e1.py}; the same holds on a box-pushing value target,
+\texttt{box\_prop\_attn.py}, and on the convolutional planner of
+\S\ref{sec:emp-drc}). What \emph{does} build over ticks is the \emph{reach} of a far
+perturbation toward the agent (\textbf{E5}, \texttt{e5.py}; Fig.~\ref{fig:reach}): a
+settling transient that carries graph-distant information into the hidden, not a
+re-propagation of the value field.
 
 \textbf{(ii) The value field is a correct, causal value.} It is
 Bellman-self-consistent (optimality residual$/\mathrm{std}(V)=[0.19,0.25,0.25,0.22]$
@@ -520,7 +525,8 @@ per cell as this value's gradient ($0.44$, chance $0.25$; $61\%$ goalward), and 
 the attention pattern --- but it too is flat across ticks (no outward frontier).
 
 \textbf{(iii) What the ticks refine is the decision.} Reading the model's
-\emph{own} actor head at each tick, the chosen action \emph{changes on $35\%$ of
+\emph{own} actor head at each tick (\textbf{E13}, \texttt{e13.py};
+Fig.~\ref{fig:decide}), the chosen action \emph{changes on $35\%$ of
 boards} from the first tick to the settled one and grows more goalward
 ($0.52\to0.60$, chance $0.25$); the decision margin sharpens ($1.6\to3.3$) and the
 global value contracts ($|\Delta V|\,0.72\to0.23$), as the hidden settles toward a
@@ -531,53 +537,63 @@ not the value field --- which is why thinking helps most on hard levels yet the
 value field looks static. This is the improvement half of
 Prop.~\ref{prop:improvement} realised at the head, over an amortized evaluation.
 
-\begin{figure}[t]
-\begin{subfigure}{0.32\textwidth}\centering
+\begin{figure}[t]\centering
 \begin{tikzpicture}
-\begin{axis}[width=3.55cm,height=2.5cm,xlabel={tick},ylabel={agent $\lVert\Delta h\rVert$},
-  xmin=1,xmax=12,ymin=0,ymax=1.65,legend pos=south east,legend style={font=\tiny,inner sep=0.6pt},
-  tick label style={font=\tiny},label style={font=\tiny},xlabel near ticks,ylabel near ticks]
-\addplot[mark=*,blue,thick,mark size=0.5pt] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
-\addplot[mark=square*,orange,thick,mark size=0.5pt] coordinates {(1,0.22)(2,0.48)(3,0.72)(4,0.85)(5,0.92)(6,0.97)(7,1.00)(8,0.99)(9,1.03)(10,1.03)(11,1.03)(12,1.07)};
-\addplot[mark=triangle*,red,thick,mark size=0.5pt] coordinates {(1,0.11)(2,0.20)(3,0.31)(4,0.42)(5,0.49)(6,0.51)(7,0.53)(8,0.57)(9,0.58)(10,0.64)(11,0.66)(12,0.69)};
+\begin{axis}[width=10cm,height=5.2cm,xlabel={thinking tick $k$},ylabel={agent-cell influence $\lVert\Delta h\rVert$},
+  xmin=1,xmax=12,ymin=0,ymax=1.65,legend pos=south east,legend style={font=\small},
+  tick label style={font=\small},label style={font=\small},xlabel near ticks,ylabel near ticks]
+\addplot[mark=*,blue,thick,mark size=1.6pt] coordinates {(1,0.48)(2,0.80)(3,1.05)(4,1.23)(5,1.27)(6,1.31)(7,1.37)(8,1.42)(9,1.41)(10,1.44)(11,1.46)(12,1.48)};
+\addplot[mark=square*,orange,thick,mark size=1.6pt] coordinates {(1,0.22)(2,0.48)(3,0.72)(4,0.85)(5,0.92)(6,0.97)(7,1.00)(8,0.99)(9,1.03)(10,1.03)(11,1.03)(12,1.07)};
+\addplot[mark=triangle*,red,thick,mark size=1.8pt] coordinates {(1,0.11)(2,0.20)(3,0.31)(4,0.42)(5,0.49)(6,0.51)(7,0.53)(8,0.57)(9,0.58)(10,0.64)(11,0.66)(12,0.69)};
 \legend{$d{=}1$,$d{=}5$,$d{=}9$}
 \end{axis}\end{tikzpicture}
-\vspace{-4pt}
-\subcaption{a far perturbation's influence reaches the agent over several ticks (a transient).}
+\caption{\textbf{A far perturbation's influence reaches the agent over a few ticks --- a
+transient.} Source: \textbf{E5} (\texttt{experiments/interp/e5.py}). Agent-cell latent
+shift $\lVert\Delta h\rVert$ per thinking tick after flipping a single floor cell at graph
+distance $d$ from the agent; the signal arrives \emph{later} for larger $d$ ($\sim$1 hop per
+tick). This reach is a settling transient on the hidden/decision, \emph{not} a re-propagation
+of value: the per-cell value field itself is amortized --- set by tick~1 and static thereafter
+(\textbf{E1}, \texttt{e1.py}: own-operator coefficient $0.23\!\to\!0$,
+$\lVert\Delta v\rVert/\lVert v\rVert\,0.01\!\to\!0$; same on a box-push value target,
+\texttt{box\_prop\_attn.py}).}
 \label{fig:reach}
-\end{subfigure}\hfill
-\begin{subfigure}{0.32\textwidth}\centering
+\end{figure}
+
+\begin{figure}[t]\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=3.55cm,height=2.5cm,symbolic x coords={goal,box,block,off},xtick=data,
-  ylabel={$|\Delta V|/\mathrm{std}$},ymin=0,ymax=1.85,bar width=5pt,
-  nodes near coords,every node near coord/.append style={font=\tiny},
-  tick label style={font=\tiny},label style={font=\tiny},ylabel near ticks]
-\addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)(block,1.25)(off,0.35)};
+\begin{axis}[ybar,width=10cm,height=5.2cm,symbolic x coords={goal,box,block,off-path},xtick=data,
+  ylabel={$|\Delta V|/\mathrm{std}(V)$},ymin=0,ymax=1.85,bar width=22pt,
+  nodes near coords,every node near coord/.append style={font=\small},
+  tick label style={font=\small},label style={font=\small},ylabel near ticks]
+\addplot[fill=teal!55,draw=teal!60] coordinates {(goal,0.97)(box,1.46)(block,1.25)(off-path,0.35)};
 \end{axis}\end{tikzpicture}
-\vspace{-4pt}
-\subcaption{value tracks source/graph edits, not a cosmetic wall.}
+\caption{\textbf{The value causally tracks source and graph edits, but not a cosmetic wall.}
+Sources: \textbf{E6b} (\texttt{e6b.py}) for the \texttt{goal}/\texttt{box} edits, \textbf{E9}
+(\texttt{e9.py}) for the path-blocking (\texttt{block}) vs.\ \texttt{off-path} wall. Shift in the
+decoded value $|\Delta V|$ (in $\mathrm{std}(V)$ units) when moving the goal, moving a box (box
+$>$ goal, as the resolvent predicts), inserting a wall that lengthens the agent's path
+(\texttt{block}), or an off-path cosmetic wall (\texttt{off-path}). The path-blocking edit also
+reaches the agent's \emph{own} cell ($2.2\times$) and re-plans its move ($3\times$ the cosmetic
+wall) --- \textbf{E10} (\texttt{e10.py}).}
 \label{fig:abl}
-\end{subfigure}\hfill
-\begin{subfigure}{0.32\textwidth}\centering
+\end{figure}
+
+\begin{figure}[t]\centering
 \begin{tikzpicture}
-\begin{axis}[ybar,width=3.55cm,height=2.5cm,symbolic x coords={1-3,4-7,8-12,$\geq$13},xtick=data,
-  ylabel={$\Delta$ goalward (t1$\to$K)},ymin=0,ymax=0.19,bar width=4pt,xlabel={agent$\to$goal dist},
-  nodes near coords,every node near coord/.append style={font=\tiny,/pgf/number format/.cd,fixed,fixed zerofill,precision=2},
-  tick label style={font=\tiny},label style={font=\tiny},xlabel near ticks,ylabel near ticks]
-\addplot[fill=violet!60,draw=violet!65] coordinates {(1-3,0.10)(4-7,0.07)(8-12,0.08)($\geq$13,0.15)};
+\begin{axis}[ybar,width=10cm,height=5.2cm,symbolic x coords={1--3,4--7,8--12,$\geq$13},xtick=data,
+  ylabel={$\Delta$ goalward, tick~1$\to K$},ymin=0,ymax=0.19,bar width=26pt,xlabel={agent$\to$goal distance (hops)},
+  nodes near coords,every node near coord/.append style={font=\small,/pgf/number format/.cd,fixed,fixed zerofill,precision=2},
+  tick label style={font=\small},label style={font=\small},xlabel near ticks,ylabel near ticks]
+\addplot[fill=violet!60,draw=violet!65] coordinates {(1--3,0.10)(4--7,0.07)(8--12,0.08)($\geq$13,0.15)};
 \end{axis}\end{tikzpicture}
-\vspace{-4pt}
-\subcaption{the decision turns goalward over ticks, most when the goal is far.}
+\caption{\textbf{The decision turns goalward over ticks, most when the goal is far.} Source:
+\textbf{E13} (\texttt{experiments/interp/e13.py}). Reading the model's \emph{own} actor head at
+each thinking tick: increase in the fraction of boards whose chosen first move is goalward, from
+tick~1 to the settled tick~$K$, stratified by agent$\to$goal graph distance. The gain is largest
+for the farthest goals ($+0.15$ at distance $\geq13$ vs.\ $+0.07$--$0.10$ nearer), exactly where
+the determining reward information is most graph-distant. (Overall the action changes on $35\%$
+of boards and the decision margin sharpens $1.6\!\to\!3.3$.)}
 \label{fig:decide}
-\end{subfigure}
-\caption{\textbf{Amortized value; the decision refines over ticks.} (a) a far
-perturbation's influence reaches the agent over a few ticks (a transient --- the value
-field itself is amortized, set by tick~1); (b) the value causally tracks edits to the
-source (goal/box) and the graph (a path-blocking wall) --- reaching the agent and
-re-planning --- but not a cosmetic off-path wall; (c) reading the model's own head per
-tick, the \emph{decision} becomes more goalward as the hidden settles, the gain largest
-where the goal is farthest.}
-\label{fig:refine}
 \end{figure}
 
 \textbf{The spatial form of the improvement is routing-dependent.}
