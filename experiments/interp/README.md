@@ -88,6 +88,21 @@ IMPALA on Boxoban unfiltered-train (variable thinking depth `d~U{1..6}`, `γ=0.9
 - [`../../results/thinking_curve_vardepth.py`](../../results/thinking_curve_vardepth.py) — solve rate vs inner
   thinking depth (the `n_active` sweep; behavioral, lives with the sweep in `results/`).
 
+**Cross-check on the convolutional planner (DRC(3,3), masked/local routing).** Does the prior-work
+ConvLSTM (Guez/Bush/Taufeeque) also show *cellwise* GPI? Loads the pretrained DRC(3,3) 2B checkpoint
+(`AlignmentResearch/learned-planner :: drc33/bkynosqi/cp_2002944000`, via `eval_pretrained.py`) and probes
+the per-cell ConvLSTM hidden over thinking ticks (extracted by a manual `apply_cells_once` loop).
+- `drc_box_gpi.py` — **box-centric** cellwise GPI (the faithful Sokoban quantity): per-cell box-push value
+  (BFS on the push graph) + optimal push-direction. Result on the 2B DRC: push-direction decodable **0.68**
+  (chance 0.25), the decoded value's **gradient is the optimal push 0.75**, policy ≈ value-gradient **0.55** —
+  the cellwise GPI fixed-point — with far cells refining over ticks (d6–8: 0.46→0.69). Mostly amortized by
+  tick 1.
+- `drc_causal.py` — causal box-value reformation (E9/E10 analog): an on-path wall (lengthens the box-push
+  path) moves the decoded cellwise value **~2.5–5× more** than a cosmetic wall, in the predicted direction —
+  physics-sensitive, but front-loaded (largest at tick 1, not building over ticks).
+- `drc_gpi.py` — the agent-navigation baseline (weak: nav-to-target is the wrong value for a box-pushing
+  task; value R² 0.14, no frontier). Kept to show why the box-centric quantity is the right one.
+
 **Shared helpers (imported by the probes):** `plan.py` (BFS distance fields, ridge/linear probes,
 `analyse_plan`), `slots.py` (`decode_tiles`, slot-core utilities), `search.py`.
 
