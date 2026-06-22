@@ -60,6 +60,7 @@ import jax
 import jax.numpy as jnp
 
 from cleanba.convlstm import BaseLSTM, BaseLSTMConfig, ConvConfig, LSTMCellState
+from cleanba.entmax import normalize as normalize_attn
 
 
 # --------------------------------------------------------------------------------------------------
@@ -76,6 +77,12 @@ class SlotCellConfig:
     routing_readout: Literal["softmax", "maxplus"] = "softmax"  # softmax = most stable (and the
                                         # strongest attn arm empirically); maxplus = VIN-aligned soft
                                         # Bellman max-plus (the thesis-pure operator, slightly riskier).
+    routing_norm: Literal["softmax", "entmax15", "sparsemax"] = "softmax"  # normalizer for the
+                                        # softmax routing readout: "softmax" (dense, every slot >0) |
+                                        # "entmax15" (alpha=1.5) | "sparsemax" (alpha=2). The sparse
+                                        # variants assign EXACT-zero weight to low-scoring slots -> a
+                                        # hard learned graph N, mirroring attn_lstm's attn_norm. Only the
+                                        # slot<->slot ROUTING uses it; the binding competition stays softmax.
     maxplus_beta_init: float = 1.0
     maxplus_beta_max: float = 10.0
 
@@ -194,7 +201,7 @@ class SlotCell(nn.RNNCellBase):
         L = jnp.einsum("bnhe,bmhe->bhnm", qr, kr) * (dh ** -0.5)                     # (B,nh,N,N)
 
         if self.cfg.routing_readout == "softmax":
-            w = jax.nn.softmax(L, axis=-1)                          # over source slots m
+            w = normalize_attn(self.cfg.routing_norm, L, axis=-1)   # over source slots m; sparse if entmax/sparsemax
             self.sow("intermediates", "route_attn", w)  # (B,nh,N,N): slot<->slot routing graph (recovers N?)
             m_route = jnp.einsum("bhnm,bmhe->bnhe", w, vr)          # (B,N,nh,dh)
         elif self.cfg.routing_readout == "maxplus":
