@@ -419,6 +419,28 @@ def sokoban_drc_slots_d3_fixed4_n100(): return _slots_d3_fixed4(100)  # 1.0x cel
 def sokoban_drc_slots_d3_fixed4_n200(): return _slots_d3_fixed4(200)  # 2.0x cells: over-complete (redundant slots)
 def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cells: under-complete (slots must share)
 # fmt: on
+
+
+def _slots_d3_fixed4_4gpu(num_slots: int) -> Args:
+    """Same run as `_slots_d3_fixed4` but split across 4 GPUs on one node for ~3-4x wall-clock: 2 actor
+    devices [0,1] + 2 learner devices [2,3] (the learner shards via pmap). `local_num_envs` is halved to
+    128 so num_envs (256), the batch (128*20*1*2 = 5120) and total steps (300M) are IDENTICAL to the
+    1-GPU config -- only wall-clock changes, keeping the runs directly comparable. Decouples the env
+    rollout from the gradient step (the 1-GPU config time-shares both on GPU0). Divisibility:
+    local_num_envs 128 % len(learner_ids) 2 == 0; int(128/2)*1 % num_minibatches 8 == 0."""
+    args = _slots_d3_fixed4(num_slots)
+    args.local_num_envs = 128
+    args.num_actor_threads = 1
+    args.actor_device_ids = [0, 1]
+    args.learner_device_ids = [2, 3]
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_d3_fixed4_n100_4gpu(): return _slots_d3_fixed4_4gpu(100)
+def sokoban_drc_slots_d3_fixed4_n200_4gpu(): return _slots_d3_fixed4_4gpu(200)
+def sokoban_drc_slots_d3_fixed4_n50_4gpu():  return _slots_d3_fixed4_4gpu(50)
+# fmt: on
 # fmt: on
 
 
