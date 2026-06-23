@@ -444,12 +444,14 @@ def sokoban_drc_slots_d3_fixed4_n50_4gpu():  return _slots_d3_fixed4_4gpu(50)
 
 
 def _slots_d3_fixed4_4gpu_bigl(num_slots: int) -> Args:
-    """Faster 4-GPU layout: put the LEARNER on ALL 4 devices and let it share the 2 actor GPUs. Live
-    queries show the actor GPUs sit at ~0% util with rollout ~0.18s (the actor is CPU/env-bound), while
-    the 2-GPU learner is pegged at 100% -- the sole bottleneck. learner_device_ids=[0,1,2,3] doubles
-    learner sharding (per-device minibatch halves) at negligible contention, so throughput ~doubles
-    (~9-10h vs ~18h). actor_device_ids=[0,1], local_num_envs=128 -> num_envs 256, batch 5120, 300M ALL
-    unchanged (faithful). Overlap is supported (single-GPU default is actor=[0] learner=[0]).
+    """NEGATIVE RESULT (kept for the record): puts the LEARNER on ALL 4 devices, sharing the 2 idle actor
+    GPUs (actor_device_ids=[0,1], learner_device_ids=[0,1,2,3], local_num_envs=128; batch/envs/steps
+    unchanged & faithful). Hypothesis was ~2x -- the actor GPUs sit at ~0% util (rollout ~0.18s) while the
+    2-GPU learner is pegged at 100%. MEASURED on the n50 pod: 5688 SPS vs the 2+2 baseline of 5688 -- ZERO
+    speedup, and the 4-way shard load-balances worse (a learner GPU drops to 0%). The model is small
+    enough that each update is dominated by the SEQUENTIAL recurrent unroll (4 ticks x 3 depth = 12 small-
+    kernel cell applications) -- launch/sync overhead, not parallelizable learner compute -- so more
+    learner sharding can't help. The 2+2 split (`_slots_d3_fixed4_4gpu`) is the ~18h floor on 4 GPUs.
     Divisibility: 128 % 4 == 0; (128/4)*1 % 8 == 0."""
     args = _slots_d3_fixed4_4gpu(num_slots)   # actor[0,1], learner[2,3], lne=128
     args.learner_device_ids = [0, 1, 2, 3]
