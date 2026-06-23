@@ -463,6 +463,25 @@ def sokoban_drc_slots_d3_fixed4_n100_4gpu_bigl(): return _slots_d3_fixed4_4gpu_b
 def sokoban_drc_slots_d3_fixed4_n200_4gpu_bigl(): return _slots_d3_fixed4_4gpu_bigl(200)
 def sokoban_drc_slots_d3_fixed4_n50_4gpu_bigl():  return _slots_d3_fixed4_4gpu_bigl(50)
 # fmt: on
+
+
+def _slots_d3_fixed4_4gpu_mb4(num_slots: int) -> Args:
+    """2+2 4-GPU split with num_minibatches=4 (vs 8): half as many sequential learner grad passes per
+    update (minibatch_size 640->1280). Since each update is dominated by the sequential recurrent-unroll
+    overhead (see `_slots_d3_fixed4_4gpu_bigl`), halving the pass count should cut wall-clock toward ~12h.
+    RECIPE CHANGE -- different optimization than the faithful `_slots_d3_fixed4_4gpu` (fewer, larger SGD
+    steps per batch), acceptable for the cell-count *capacity* sweep but NOT identical to the 300M planning
+    core. local_num_envs=128, batch 5120, num_envs 256, 300M unchanged. Divisibility: (128/2)*1 % 4 == 0."""
+    args = _slots_d3_fixed4_4gpu(num_slots)
+    args.num_minibatches = 4
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_d3_fixed4_n100_4gpu_mb4(): return _slots_d3_fixed4_4gpu_mb4(100)
+def sokoban_drc_slots_d3_fixed4_n200_4gpu_mb4(): return _slots_d3_fixed4_4gpu_mb4(200)
+def sokoban_drc_slots_d3_fixed4_n50_4gpu_mb4():  return _slots_d3_fixed4_4gpu_mb4(50)
+# fmt: on
 # fmt: on
 
 
