@@ -488,6 +488,32 @@ def _slots_d3_fixed4_4gpu_ns10(num_slots: int) -> Args:
     return args
 
 
+def _slots_layout(num_slots: int, n_actor: int, n_learner: int, num_minibatches: int = 4) -> Args:
+    """General device layout for the slot runs (e.g. for 4090 pods with more actor GPUs). Actors on
+    devices [0..n_actor), learners on the next n_learner. local_num_envs = 256/n_actor keeps num_envs=256
+    and batch=5120 FAITHFUL; mb4 by default. Use n_actor=4,n_learner=2 (6 GPUs) for n200 to relieve its
+    actor-inference bottleneck. n_actor MUST divide 256 (2/4/8); the asserts below enforce the learner-
+    shard + minibatch divisibility."""
+    assert 256 % n_actor == 0, f"n_actor={n_actor} must divide 256"
+    lne = 256 // n_actor
+    assert lne % n_learner == 0 and (lne // n_learner) % num_minibatches == 0, "layout violates shard/minibatch divisibility"
+    args = _slots_d3_fixed4(num_slots)              # ns=20, 300M schedule
+    args.local_num_envs = lne
+    args.num_actor_threads = 1
+    args.actor_device_ids = list(range(n_actor))
+    args.learner_device_ids = list(range(n_actor, n_actor + n_learner))
+    args.num_minibatches = num_minibatches
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_d3_n200_4a2l(): return _slots_layout(200, 4, 2)  # 6 GPUs: relieve n200 actor bottleneck
+def sokoban_drc_slots_d3_n200_8a2l(): return _slots_layout(200, 8, 2)  # 10 GPUs: n200 max-effort
+def sokoban_drc_slots_d3_n100_4a2l(): return _slots_layout(100, 4, 2)  # 6 GPUs (n100 unlikely to need it)
+def sokoban_drc_slots_d3_n50_4a2l():  return _slots_layout(50, 4, 2)
+# fmt: on
+
+
 def _slots_d3_2gpu(num_slots: int) -> Args:
     """2-GPU layout to test whether we can DROP GPUs without losing throughput: 1 actor (device 0) + 1
     learner (device 1), local_num_envs=256 -> num_envs 256, batch 5120, 300M unchanged (faithful). Since
