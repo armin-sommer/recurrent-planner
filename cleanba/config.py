@@ -441,6 +441,26 @@ def sokoban_drc_slots_d3_fixed4_n100_4gpu(): return _slots_d3_fixed4_4gpu(100)
 def sokoban_drc_slots_d3_fixed4_n200_4gpu(): return _slots_d3_fixed4_4gpu(200)
 def sokoban_drc_slots_d3_fixed4_n50_4gpu():  return _slots_d3_fixed4_4gpu(50)
 # fmt: on
+
+
+def _slots_d3_fixed4_4gpu_bigl(num_slots: int) -> Args:
+    """Faster 4-GPU layout: put the LEARNER on ALL 4 devices and let it share the 2 actor GPUs. Live
+    queries show the actor GPUs sit at ~0% util with rollout ~0.18s (the actor is CPU/env-bound), while
+    the 2-GPU learner is pegged at 100% -- the sole bottleneck. learner_device_ids=[0,1,2,3] doubles
+    learner sharding (per-device minibatch halves) at negligible contention, so throughput ~doubles
+    (~9-10h vs ~18h). actor_device_ids=[0,1], local_num_envs=128 -> num_envs 256, batch 5120, 300M ALL
+    unchanged (faithful). Overlap is supported (single-GPU default is actor=[0] learner=[0]).
+    Divisibility: 128 % 4 == 0; (128/4)*1 % 8 == 0."""
+    args = _slots_d3_fixed4_4gpu(num_slots)   # actor[0,1], learner[2,3], lne=128
+    args.learner_device_ids = [0, 1, 2, 3]
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_d3_fixed4_n100_4gpu_bigl(): return _slots_d3_fixed4_4gpu_bigl(100)
+def sokoban_drc_slots_d3_fixed4_n200_4gpu_bigl(): return _slots_d3_fixed4_4gpu_bigl(200)
+def sokoban_drc_slots_d3_fixed4_n50_4gpu_bigl():  return _slots_d3_fixed4_4gpu_bigl(50)
+# fmt: on
 # fmt: on
 
 
