@@ -476,6 +476,18 @@ def _slots_d3_fixed4_4gpu_mb4(num_slots: int) -> Args:
     return args
 
 
+def _slots_d3_fixed4_4gpu_ns10(num_slots: int) -> Args:
+    """num_steps 20 -> 10 with local_num_envs 128 -> 256: trades the learner's SEQUENTIAL temporal replay
+    depth (num_steps x 4 ticks x 3 depth cell-apps -- the real launch/scan bottleneck) for parallel env
+    width. 2+2 layout; batch = 256*10*2 = 5120 and 300M held (num_envs grows 256 -> 512). Likely the
+    biggest single lever, BUT num_steps is also the V-trace credit horizon -- halving it risks hurting
+    long-horizon Sokoban learning, so watch returns. Divisibility: 256 % 2 == 0; (256/2)*1 % 8 == 0."""
+    args = _slots_d3_fixed4_4gpu(num_slots)   # actor[0,1], learner[2,3], lne=128, ns=20
+    args.num_steps = 10
+    args.local_num_envs = 256
+    return args
+
+
 def _slots_d3_2gpu(num_slots: int) -> Args:
     """2-GPU layout to test whether we can DROP GPUs without losing throughput: 1 actor (device 0) + 1
     learner (device 1), local_num_envs=256 -> num_envs 256, batch 5120, 300M unchanged (faithful). Since
@@ -494,6 +506,9 @@ def sokoban_drc_slots_d3_fixed4_n50_mb4():  return _slots_d3_fixed4_4gpu_mb4(50)
 def sokoban_drc_slots_d3_fixed4_n100_2gpu(): return _slots_d3_2gpu(100)
 def sokoban_drc_slots_d3_fixed4_n200_2gpu(): return _slots_d3_2gpu(200)
 def sokoban_drc_slots_d3_fixed4_n50_2gpu():  return _slots_d3_2gpu(50)
+def sokoban_drc_slots_d3_fixed4_n100_ns10(): return _slots_d3_fixed4_4gpu_ns10(100)
+def sokoban_drc_slots_d3_fixed4_n200_ns10(): return _slots_d3_fixed4_4gpu_ns10(200)
+def sokoban_drc_slots_d3_fixed4_n50_ns10():  return _slots_d3_fixed4_4gpu_ns10(50)
 # fmt: on
 
 
