@@ -511,6 +511,7 @@ def sokoban_drc_slots_d3_n200_4a2l(): return _slots_layout(200, 4, 2)  # 6 GPUs:
 def sokoban_drc_slots_d3_n200_8a2l(): return _slots_layout(200, 8, 2)  # 10 GPUs: n200 max-effort
 def sokoban_drc_slots_d3_n100_4a2l(): return _slots_layout(100, 4, 2)  # 6 GPUs (n100 unlikely to need it)
 def sokoban_drc_slots_d3_n50_4a2l():  return _slots_layout(50, 4, 2)
+def sokoban_drc_slots_d3_n150_4a2l(): return _slots_layout(150, 4, 2)  # 6 GPUs: 1.5x cells (third run, 150 vs 200)
 # fmt: on
 
 
@@ -529,6 +530,7 @@ def _slots_d3_2gpu(num_slots: int) -> Args:
 def sokoban_drc_slots_d3_fixed4_n100_mb4(): return _slots_d3_fixed4_4gpu_mb4(100)
 def sokoban_drc_slots_d3_fixed4_n200_mb4(): return _slots_d3_fixed4_4gpu_mb4(200)
 def sokoban_drc_slots_d3_fixed4_n50_mb4():  return _slots_d3_fixed4_4gpu_mb4(50)
+def sokoban_drc_slots_d3_fixed4_n150_mb4(): return _slots_d3_fixed4_4gpu_mb4(150)
 def sokoban_drc_slots_d3_fixed4_n100_2gpu(): return _slots_d3_2gpu(100)
 def sokoban_drc_slots_d3_fixed4_n200_2gpu(): return _slots_d3_2gpu(200)
 def sokoban_drc_slots_d3_fixed4_n50_2gpu():  return _slots_d3_2gpu(50)
