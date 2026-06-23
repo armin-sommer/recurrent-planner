@@ -466,6 +466,38 @@ def sokoban_drc_slots_d3_fixed4_n50_4gpu_bigl():  return _slots_d3_fixed4_4gpu_b
 
 
 def _slots_d3_fixed4_4gpu_mb4(num_slots: int) -> Args:
+    """4-GPU 2-actor/2-learner layout (`_slots_d3_fixed4_4gpu`) but with num_minibatches 8 -> 4: the
+    learner does HALF as many sequential minibatch passes per update (each 2x larger), which should cut
+    the dominant per-update overhead ~1.3-1.5x on this small launch-bound model. This is a RECIPE change
+    (4 SGD steps/update instead of 8 -> different optimization), not just a layout change. Batch 5120 /
+    num_envs 256 / 300M unchanged. Divisibility: (128/2)*1 % 4 == 0."""
+    args = _slots_d3_fixed4_4gpu(num_slots)
+    args.num_minibatches = 4
+    return args
+
+
+def _slots_d3_2gpu(num_slots: int) -> Args:
+    """2-GPU layout to test whether we can DROP GPUs without losing throughput: 1 actor (device 0) + 1
+    learner (device 1), local_num_envs=256 -> num_envs 256, batch 5120, 300M unchanged (faithful). Since
+    learner-sharding past 1 GPU showed no gain (the `bigl` negative result), 2 decoupled GPUs may match
+    the 4-GPU 2+2 throughput at half the cost. Divisibility: 256 % 1 == 0; (256/1)*1 % 8 == 0."""
+    args = _slots_d3_fixed4(num_slots)        # local_num_envs=256, num_actor_threads=1
+    args.actor_device_ids = [0]
+    args.learner_device_ids = [1]
+    return args
+
+
+# fmt: off
+def sokoban_drc_slots_d3_fixed4_n100_mb4(): return _slots_d3_fixed4_4gpu_mb4(100)
+def sokoban_drc_slots_d3_fixed4_n200_mb4(): return _slots_d3_fixed4_4gpu_mb4(200)
+def sokoban_drc_slots_d3_fixed4_n50_mb4():  return _slots_d3_fixed4_4gpu_mb4(50)
+def sokoban_drc_slots_d3_fixed4_n100_2gpu(): return _slots_d3_2gpu(100)
+def sokoban_drc_slots_d3_fixed4_n200_2gpu(): return _slots_d3_2gpu(200)
+def sokoban_drc_slots_d3_fixed4_n50_2gpu():  return _slots_d3_2gpu(50)
+# fmt: on
+
+
+def _slots_d3_fixed4_4gpu_mb4(num_slots: int) -> Args:
     """2+2 4-GPU split with num_minibatches=4 (vs 8): half as many sequential learner grad passes per
     update (minibatch_size 640->1280). Since each update is dominated by the sequential recurrent-unroll
     overhead (see `_slots_d3_fixed4_4gpu_bigl`), halving the pass count should cut wall-clock toward ~12h.
