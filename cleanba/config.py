@@ -424,9 +424,10 @@ def sokoban_drc_slots_d3_fixed4_n100(): return _slots_d3_fixed4(100)  # 1.0x cel
 def sokoban_drc_slots_d3_fixed4_n200(): return _slots_d3_fixed4(200)  # 2.0x cells: over-complete (redundant slots)
 def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cells: under-complete (slots must share)
 # D1: learned-but-task-STABLE positional binding (midpoint between dense attention's GIVEN cell=square and
-# the slot core's per-task content-addressed sigma). n100 = 1:1 capacity match to dense attention so the only
-# difference vs the content-binding n100 is the addressing -> isolates "does a stable binding restore graph routing".
-def sokoban_drc_slots_d3_fixed4_n100_posbind(): return _slots_d3_fixed4(100, binding="positional")
+# the slot core's per-task content-addressed sigma). Uses the SAME 4-GPU/mb4 layout as the trained content
+# n100 (`_n100_mb4`), so the ONLY difference vs that run is binding="positional" -> a clean control isolating
+# "does a stable binding restore transition-graph routing". 1:1 capacity match to dense attention.
+def sokoban_drc_slots_d3_fixed4_n100_posbind(): return _slots_d3_fixed4_4gpu_mb4(100, binding="positional")
 # fmt: on
 
 
@@ -511,14 +512,14 @@ def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_
     return args
 
 
-def _slots_d3_fixed4_4gpu(num_slots: int) -> Args:
+def _slots_d3_fixed4_4gpu(num_slots: int, binding: Literal["content", "positional"] = "content") -> Args:
     """Same run as `_slots_d3_fixed4` but split across 4 GPUs on one node for ~3-4x wall-clock: 2 actor
     devices [0,1] + 2 learner devices [2,3] (the learner shards via pmap). `local_num_envs` is halved to
     128 so num_envs (256), the batch (128*20*1*2 = 5120) and total steps (300M) are IDENTICAL to the
     1-GPU config -- only wall-clock changes, keeping the runs directly comparable. Decouples the env
     rollout from the gradient step (the 1-GPU config time-shares both on GPU0). Divisibility:
     local_num_envs 128 % len(learner_ids) 2 == 0; int(128/2)*1 % num_minibatches 8 == 0."""
-    args = _slots_d3_fixed4(num_slots)
+    args = _slots_d3_fixed4(num_slots, binding=binding)
     args.local_num_envs = 128
     args.num_actor_threads = 1
     args.actor_device_ids = [0, 1]
@@ -631,14 +632,14 @@ def sokoban_drc_slots_d3_fixed4_n50_ns10():  return _slots_d3_fixed4_4gpu_ns10(5
 # fmt: on
 
 
-def _slots_d3_fixed4_4gpu_mb4(num_slots: int) -> Args:
+def _slots_d3_fixed4_4gpu_mb4(num_slots: int, binding: Literal["content", "positional"] = "content") -> Args:
     """2+2 4-GPU split with num_minibatches=4 (vs 8): half as many sequential learner grad passes per
     update (minibatch_size 640->1280). Since each update is dominated by the sequential recurrent-unroll
     overhead (see `_slots_d3_fixed4_4gpu_bigl`), halving the pass count should cut wall-clock toward ~12h.
     RECIPE CHANGE -- different optimization than the faithful `_slots_d3_fixed4_4gpu` (fewer, larger SGD
     steps per batch), acceptable for the cell-count *capacity* sweep but NOT identical to the 300M planning
     core. local_num_envs=128, batch 5120, num_envs 256, 300M unchanged. Divisibility: (128/2)*1 % 4 == 0."""
-    args = _slots_d3_fixed4_4gpu(num_slots)
+    args = _slots_d3_fixed4_4gpu(num_slots, binding=binding)
     args.num_minibatches = 4
     return args
 
