@@ -6,8 +6,9 @@ from typing import List, Literal, Optional
 from cleanba.attn_lstm import AttentionCellConfig, AttentionLSTMConfig
 from cleanba.cellwise_lstm import CellwiseLSTMCellConfig, CellwiseLSTMConfig
 from cleanba.slot_lstm import SlotCellConfig, SlotLSTMConfig
+from cleanba.pool_inject_lstm import PoolInjectCellConfig, PoolInjectLSTMConfig
 from cleanba.convlstm import ConvConfig, ConvLSTMCellConfig, ConvLSTMConfig
-from cleanba.environments import AtariEnv, BoxWorldConfig, EnvConfig, EnvpoolBoxobanConfig, MiniPacManConfig, random_seed
+from cleanba.environments import AtariEnv, BoxWorldConfig, EnvConfig, EnvpoolBoxobanConfig, MiniPacManConfig, MiniWorldConfig, random_seed
 from cleanba.evaluate import EvalConfig
 from cleanba.impala_loss import (
     ImpalaLossConfig,
@@ -421,6 +422,78 @@ def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cel
 # fmt: on
 
 
+# ==================================================================================================
+# POOL-AND-INJECT relational core (cleanba.pool_inject_lstm): the encoder is POOLED to one global vector
+# and INJECTED identically into every cell (no positional binding); cells differentiate only via dense
+# cell<->cell attention routing + a learnable per-cell identity. The natural core for first-person /
+# partial observation. Run on BOTH Sokoban (positional-binding-free control) and MiniWorld (the target).
+# ==================================================================================================
+def sokoban_drc_poolinject(n_recurrent: int = 3, num_repeats: int = 4, num_cells: int = 100,
+                           routing_norm: Literal["softmax", "entmax15", "sparsemax"] = "entmax15",
+                           num_heads: int = 4, read_tokens: bool = False) -> Args:
+    """Pool-and-inject core on Sokoban -- the positional-binding-free CONTROL for the first-person runs.
+    Same proven recipe as `sokoban_drc_slots`, swapping the slot binding (competitive per-position read)
+    for pool-and-inject (one global vector to every cell). With read_tokens=False the cells get NO spatial
+    layout, only a pooled summary, so on Sokoban this is expected to be a weaker planner than the
+    positional dense/slot cores -- that gap is the point of the comparison."""
+    args = sokoban_drc33_59()  # inherit the proven recipe (grad clip, vtrace, light L2, valid_medium eval)
+    args.net = PoolInjectLSTMConfig(
+        embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
+        recurrent=PoolInjectCellConfig(
+            features=32, num_cells=num_cells, num_heads=num_heads,
+            routing_norm=routing_norm, read_tokens=read_tokens,
+        ),
+        n_recurrent=n_recurrent, mlp_hiddens=(256,), repeats_per_step=num_repeats,
+        skip_final=False,  # CRITICAL: (B,N,d) carry can't accept the base's spatial embed skip-add
+    )
+    args.eval_envs["valid_medium"].steps_to_think = [0, 8]
+    args.total_timesteps = 300_000_000
+    _bs = 256 * 20
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(20e6 / _bs) * i for i in range(1, 16)])
+    return args
+
+
+def sokoban_poolinject_d3_fixed4_4gpu_mb4(num_cells: int = 100) -> Args:
+    """Sokoban pool-inject, D=3, FIXED 4 ticks, 1.5-entmax routing, on 4 GPUs (2 actor [0,1] + 2 learner
+    [2,3], mb4) -- the proven slot-run layout. batch 5120 / num_envs 256 / 300M, comparable to the slot runs."""
+    args = sokoban_drc_poolinject(n_recurrent=3, num_repeats=4, num_cells=num_cells, routing_norm="entmax15")
+    args.local_num_envs = 128
+    args.num_actor_threads = 1
+    args.actor_device_ids = [0, 1]
+    args.learner_device_ids = [2, 3]
+    args.num_minibatches = 4
+    return args
+
+
+def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_cells: int = 100,
+                                   local_num_envs: int = 64, n_actor: int = 1, n_learner: int = 1) -> Args:
+    """First-person MiniWorld with the pool-and-inject core, D=3, FIXED 4 ticks, 1.5-entmax routing.
+    Egocentric (60x80x3) pixels, Discrete(3) nav. The encoder downsamples 60x80 to a ~8x10 map; the pool
+    is size-agnostic. OpenGL rendering is the bottleneck, so AsyncVectorEnv + a light GPU layout and fewer
+    envs than Sokoban. local_num_envs / device layout are TUNABLE on the pod after the throughput bench."""
+    args = sokoban_drc_poolinject(n_recurrent=3, num_repeats=4, num_cells=num_cells, routing_norm="entmax15")
+    # downsampling embed for 60x80 (Sokoban's stride-1 4x4 embed would leave a 60x80=4800-token map)
+    args.net = dataclasses.replace(args.net, embed=[
+        ConvConfig(32, (8, 8), (4, 4), "SAME", True),   # 60x80 -> 15x20
+        ConvConfig(32, (4, 4), (2, 2), "SAME", True),   # 15x20 -> 8x10
+        ConvConfig(32, (3, 3), (1, 1), "SAME", True),   # 8x10
+    ])
+    args.train_env = MiniWorldConfig(env_id=env_id, max_episode_steps=300, asynchronous=True, headless=True)
+    args.eval_envs = dict(
+        miniworld=EvalConfig(
+            MiniWorldConfig(env_id=env_id, num_envs=64, max_episode_steps=300, asynchronous=True, headless=True),
+            n_episode_multiple=1, steps_to_think=[0, 4],
+        )
+    )
+    assert local_num_envs % n_learner == 0 and (local_num_envs // n_learner) % 4 == 0, "layout violates divisibility"
+    args.local_num_envs = local_num_envs
+    args.num_actor_threads = 1
+    args.actor_device_ids = list(range(n_actor))
+    args.learner_device_ids = list(range(n_actor, n_actor + n_learner))
+    args.num_minibatches = 4
+    return args
+
+
 def _slots_d3_fixed4_4gpu(num_slots: int) -> Args:
     """Same run as `_slots_d3_fixed4` but split across 4 GPUs on one node for ~3-4x wall-clock: 2 actor
     devices [0,1] + 2 learner devices [2,3] (the learner shards via pmap). `local_num_envs` is halved to
@@ -512,6 +585,7 @@ def sokoban_drc_slots_d3_n200_8a2l(): return _slots_layout(200, 8, 2)  # 10 GPUs
 def sokoban_drc_slots_d3_n100_4a2l(): return _slots_layout(100, 4, 2)  # 6 GPUs (n100 unlikely to need it)
 def sokoban_drc_slots_d3_n50_4a2l():  return _slots_layout(50, 4, 2)
 def sokoban_drc_slots_d3_n150_4a2l(): return _slots_layout(150, 4, 2)  # 6 GPUs: 1.5x cells (third run, 150 vs 200)
+def sokoban_drc_slots_d3_n150_1a2l(): return _slots_layout(150, 1, 2)  # 3 GPUs: n150 is learner-bound (actors ~idle at 4a), 1 actor suffices
 # fmt: on
 
 

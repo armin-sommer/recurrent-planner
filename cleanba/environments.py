@@ -384,6 +384,47 @@ class MiniPacManConfig(EnvConfig):
         return make_fn
 
 
+def _make_miniworld(env_id: str, view: str, headless: bool, max_steps: int):
+    """Build a single MiniWorld env. Runs inside each AsyncVectorEnv worker process, so headless GL must be
+    configured HERE (before pyglet/miniworld import) for servers with no display."""
+    if headless:
+        os.environ.setdefault("PYOPENGL_PLATFORM", "egl")  # GPU offscreen GL; fall back to `xvfb-run` if EGL absent
+        try:
+            import pyglet
+
+            pyglet.options["headless"] = True
+        except Exception:
+            pass
+    import miniworld  # noqa: F401  registers the MiniWorld-* gym ids in this (sub)process
+
+    return gym.make(env_id, view=view, render_mode=None, max_episode_steps=max_steps)
+
+
+@dataclasses.dataclass
+class MiniWorldConfig(EnvConfig):
+    """3D first-person MiniWorld (egocentric pixels; the state is NOT given top-down). Nav envs are
+    Discrete(3) (turn-left/right, forward) and expose agent.pos/dir + render_top_view() for probing.
+    obs is (60,80,3) uint8 HWC -> NCHW via the wrapper. Async workers render in parallel (single-env GL
+    is ~1k FPS, so asynchronous=True is required for throughput)."""
+
+    env_id: str = "MiniWorld-MazeS3Fast-v0"
+    max_episode_steps: int = 300
+    asynchronous: bool = True
+    headless: bool = True        # set EGL + pyglet-headless in each worker (servers without a display)
+    view: Literal["agent", "top"] = "agent"  # "agent" = egocentric first-person (the regime we want)
+    nn_without_noop: bool = False  # the 3 nav actions have no noop to strip
+
+    @property
+    def make(self) -> Callable[[], gym.vector.VectorEnv]:
+        env_fn = partial(_make_miniworld, self.env_id, self.view, self.headless, self.max_episode_steps)
+        VecCls = gym.vector.AsyncVectorEnv if self.asynchronous else gym.vector.SyncVectorEnv
+        return partial(
+            VectorNHWCtoNCHWWrapper.from_fn,
+            partial(VecCls, [env_fn for _ in range(self.num_envs)]),
+            self.nn_without_noop,
+        )
+
+
 @dataclasses.dataclass
 class AtariEnv(EnvpoolEnvConfig):
     max_episode_steps: int = ATARI_MAX_FRAMES  # Hessel et al. 2018 (Rainbow DQN), Table 3, Max frames per episode
