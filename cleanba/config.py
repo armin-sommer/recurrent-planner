@@ -466,11 +466,17 @@ def sokoban_poolinject_d3_fixed4_4gpu_mb4(num_cells: int = 100) -> Args:
 
 
 def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_cells: int = 100,
-                                   local_num_envs: int = 64, n_actor: int = 1, n_learner: int = 1) -> Args:
+                                   local_num_envs: int = 64,
+                                   actor_device_ids=(0,), learner_device_ids=(0,)) -> Args:
     """First-person MiniWorld with the pool-and-inject core, D=3, FIXED 4 ticks, 1.5-entmax routing.
-    Egocentric (60x80x3) pixels, Discrete(3) nav. The encoder downsamples 60x80 to a ~8x10 map; the pool
-    is size-agnostic. OpenGL rendering is the bottleneck, so AsyncVectorEnv + a light GPU layout and fewer
-    envs than Sokoban. local_num_envs / device layout are TUNABLE on the pod after the throughput bench."""
+
+    num_cells is set to the ENV STATE-SPACE size (the navigable positions the agent plans over), NOT the
+    visual-input dims: MazeS3 is a 9.5x9.5 maze => ~100 navigable unit-cells (measured), so num_cells=100,
+    a 1:1 binding capacity exactly like Sokoban's 100 board squares. (FourRooms would be ~208; scale
+    num_cells with the maze if env_id changes.) Egocentric (60x80x3) pixels, Discrete(3) nav. The encoder
+    downsamples 60x80 to a ~8x10 token map purely for perception; the pool over those tokens is size-
+    agnostic, so the visual resolution does NOT set num_cells. Default layout is single-GPU (actor+learner
+    share device 0) since MiniWorld is OpenGL-render-bound, not learner-bound."""
     args = sokoban_drc_poolinject(n_recurrent=3, num_repeats=4, num_cells=num_cells, routing_norm="entmax15")
     # downsampling embed for 60x80 (Sokoban's stride-1 4x4 embed would leave a 60x80=4800-token map)
     args.net = dataclasses.replace(args.net, embed=[
@@ -485,11 +491,12 @@ def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_
             n_episode_multiple=1, steps_to_think=[0, 4],
         )
     )
-    assert local_num_envs % n_learner == 0 and (local_num_envs // n_learner) % 4 == 0, "layout violates divisibility"
+    nl = len(learner_device_ids)
+    assert local_num_envs % nl == 0 and (local_num_envs // nl) % 4 == 0, "layout violates divisibility"
     args.local_num_envs = local_num_envs
     args.num_actor_threads = 1
-    args.actor_device_ids = list(range(n_actor))
-    args.learner_device_ids = list(range(n_actor, n_actor + n_learner))
+    args.actor_device_ids = list(actor_device_ids)
+    args.learner_device_ids = list(learner_device_ids)
     args.num_minibatches = 4
     return args
 
