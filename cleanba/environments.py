@@ -417,12 +417,14 @@ class MiniWorldConfig(EnvConfig):
     @property
     def make(self) -> Callable[[], gym.vector.VectorEnv]:
         env_fn = partial(_make_miniworld, self.env_id, self.view, self.headless, self.max_episode_steps)
-        VecCls = gym.vector.AsyncVectorEnv if self.asynchronous else gym.vector.SyncVectorEnv
-        return partial(
-            VectorNHWCtoNCHWWrapper.from_fn,
-            partial(VecCls, [env_fn for _ in range(self.num_envs)]),
-            self.nn_without_noop,
-        )
+        if self.asynchronous:
+            # MUST use spawn: gymnasium builds a dummy env in the PARENT to read the spaces, which inits a
+            # pyglet/EGL GL context; GL contexts do NOT survive fork, so forked workers crash/hang. spawn
+            # gives each worker a fresh interpreter that sets headless + creates its own context cleanly.
+            vec = partial(gym.vector.AsyncVectorEnv, [env_fn for _ in range(self.num_envs)], context="spawn")
+        else:
+            vec = partial(gym.vector.SyncVectorEnv, [env_fn for _ in range(self.num_envs)])
+        return partial(VectorNHWCtoNCHWWrapper.from_fn, vec, self.nn_without_noop)
 
 
 @dataclasses.dataclass
