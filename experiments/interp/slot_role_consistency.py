@@ -54,7 +54,13 @@ def main(cp_dir, n_boards):
     bt = np.take_along_axis(tiles, pos, axis=1)                                # (B,N) tile each slot binds
 
     rr, cc = np.divmod(np.arange(S), W); rr = rr.astype(float); cc = cc.astype(float)
-    uni_std = np.sqrt(((rr - rr.mean()) ** 2 + (cc - cc.mean()) ** 2).mean())
+    uni_std = np.sqrt(((rr - rr.mean()) ** 2 + (cc - cc.mean()) ** 2).mean())   # all-squares null (includes wall border)
+    # PROPER null: a slot that re-indexes to a uniform-random NAVIGABLE square each board. Its across-board
+    # (row,col) variance == variance of navigable positions pooled over boards (walls are ~never bound, so the
+    # all-squares uni_std over-states the ceiling). spread/nav_std ~1 => indistinguishable from random-navigable.
+    nav_r = np.concatenate([rr[tiles[b] != WALL] for b in range(B)])
+    nav_c = np.concatenate([cc[tiles[b] != WALL] for b in range(B)])
+    nav_std = np.sqrt(nav_r.var() + nav_c.var())
 
     # board tile composition baseline (what a random binder would draw)
     base = np.array([ (tiles == k).mean() for k in (WALL, FLOOR, BOX, TARGET, AGENT) ])
@@ -68,18 +74,19 @@ def main(cp_dir, n_boards):
         tile_ents.append(ent(p))
         p_agent.append(p[4]); p_target.append(p[3])
         r = rr[pos[:, n]]; c = cc[pos[:, n]]
-        pos_spreads.append(np.sqrt(r.var() + c.var()) / uni_std)
+        pos_spreads.append(np.sqrt(r.var() + c.var()) / nav_std)               # vs the navigable-square null (~1 => random-navigable)
     tile_ents = np.array(tile_ents); pos_spreads = np.array(pos_spreads)
     p_agent = np.array(p_agent); p_target = np.array(p_target)
 
     # --- role-slot index stability: which slot READS the agent/target square most, each board ---
+    # Aggregate over ALL squares of that type (Boxoban has ~4 targets); the agent is unique. Entropy over the
+    # pooled winning-slot indices: low => a consistent dedicated set of slots reads that role across boards.
     def role_slot_stats(tid):
         idxs = []
         for b in range(B):
             sq = np.where(tiles[b] == tid)[0]
-            if not len(sq):
-                continue
-            idxs.append(int(ba[b, :, sq[0]].argmax()))                         # slot that reads that square most
+            for s in sq:                                                       # every target/agent square, not just raster-first
+                idxs.append(int(ba[b, :, s].argmax()))                         # slot that reads that square most
         idxs = np.array(idxs)
         if not len(idxs):
             return float("nan"), float("nan"), 0
@@ -97,18 +104,21 @@ def main(cp_dir, n_boards):
     print(f"     mean per-slot tile entropy : {m(tile_ents):.3f}   (board-composition baseline entropy {base_ent:.3f})")
     print(f"     slots with P(bind AGENT)  >0.5 / >0.3 / >0.1 : {(p_agent>.5).sum()} / {(p_agent>.3).sum()} / {(p_agent>.1).sum()}   (max P={p_agent.max():.2f})")
     print(f"     slots with P(bind TARGET) >0.5 / >0.3 / >0.1 : {(p_target>.5).sum()} / {(p_target>.3).sum()} / {(p_target>.1).sum()}   (max P={p_target.max():.2f})")
-    print(f"  -- per-slot POSITION spread across boards (/uniform; ~1 => points to a different square each task) --")
-    print(f"     mean per-slot position spread / uniform : {m(pos_spreads):.3f}   (min over slots {pos_spreads.min():.3f}; uniform_std={uni_std:.2f})")
-    print(f"     slots position-locked (spread<0.3)      : {(pos_spreads<0.3).sum()} / {N}")
+    print(f"  -- per-slot POSITION spread across boards (/NAVIGABLE-null; ~1 => indistinguishable from random-navigable re-indexing) --")
+    print(f"     mean per-slot position spread / nav-null : {m(pos_spreads):.3f}   (min over slots {pos_spreads.min():.3f}; nav_std={nav_std:.2f}, all-sq std={uni_std:.2f})")
+    print(f"     slots position-locked (spread<0.3)       : {(pos_spreads<0.3).sum()} / {N}   (0 => no slot is a fixed grid cell)")
     print(f"  -- ROLE-SLOT INDEX stability (which slot reads the role-square most, each board) --")
     print(f"     AGENT  slot-index entropy : {ag_ent:.2f} / ln(N)={lnN:.2f}    top-1 index used on {ag_top1*100:.0f}% of boards   (n={ag_nb})")
     print(f"     TARGET slot-index entropy : {tg_ent:.2f} / ln(N)={lnN:.2f}    top-1 index used on {tg_top1*100:.0f}% of boards   (n={tg_nb})")
-    verdict = ("RE-INDEXED per task: high position spread + high role-slot entropy => content-addressed, "
-               "no fixed slot->square map" if m(pos_spreads) > 0.7 and ag_ent > 0.6 * lnN else
-               "some FIXED structure -- inspect above")
+    nofix = (pos_spreads < 0.3).sum() == 0
+    reindex = m(pos_spreads) > 0.9                                            # >0.9 of the navigable null => genuinely re-indexed, not just wall-avoiding
+    verdict = ("NOT a fixed grid (0 position-locked slots); " +
+               ("re-indexed ~as random-navigable (spread ~= nav-null)" if reindex else
+                "but only marginally above the navigable null -- cannot separate content-addressing from wall-avoiding random binding") +
+               (f"; emergent AGENT-slot role (idx entropy {ag_ent:.2f} << {lnN:.2f})" if ag_ent < 0.6 * lnN else ""))
     print(f"  --> {verdict}")
     print("PLOT_CONSIST=" + repr(dict(tile_ent=round(m(tile_ents), 3), base_ent=round(base_ent, 3),
-          pos_spread=round(m(pos_spreads), 3), pos_locked=int((pos_spreads < 0.3).sum()),
+          pos_spread=round(m(pos_spreads), 3), nav_std=round(float(nav_std), 3), pos_locked=int((pos_spreads < 0.3).sum()),
           agent_max_p=round(float(p_agent.max()), 3), target_max_p=round(float(p_target.max()), 3),
           agent_idx_ent=round(ag_ent, 3), agent_top1=round(ag_top1, 3),
           target_idx_ent=round(tg_ent, 3), target_top1=round(tg_top1, 3), lnN=round(float(lnN), 3))))

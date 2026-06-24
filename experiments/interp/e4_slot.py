@@ -91,6 +91,7 @@ def main(cp_dir, n_boards, tick, bind_thresh):
     emass = np.zeros(maxd + 1); ecnt = np.zeros(maxd + 1)                      # mass by euclid-dist shell (rounded)
     toward = []; away = []; equal = []                                        # goal-ward decomposition
     m_self = []; m_target = []; m_agent = []; beyond1 = []
+    m_target_enr = []; m_agent_enr = []                                       # GROUP-corrected enrichment (mass / proportional share)
     n_used_slots = []
 
     for b in range(B):
@@ -131,10 +132,13 @@ def main(cp_dir, n_boards, tick, bind_thresh):
                 if sel.any():
                     emass[d] += w[sel].sum(); ecnt[d] += 1
             m_self.append(float(w[q])); beyond1.append(float(w[fin & (dq > 1)].sum()))
+            n_ok = int(ok.sum())                                              # #usable slots (uniform per-slot share = 1/n_ok)
             if tgt_slot.any():
-                m_target.append(float(w[tgt_slot].sum()))
+                k = int(tgt_slot.sum()); mt = float(w[tgt_slot].sum())
+                m_target.append(mt); m_target_enr.append(mt / (k / n_ok))     # mass / proportional GROUP share (1.0 = no preference)
             if agt_slot.any():
-                m_agent.append(float(w[agt_slot].sum()))
+                k = int(agt_slot.sum()); ma = float(w[agt_slot].sum())
+                m_agent.append(ma); m_agent_enr.append(ma / (k / n_ok))
             # goal-ward asymmetry: compare BFS-to-target of each source slot's bound square to q's
             dTq = dT[pq]
             if np.isfinite(dTq):
@@ -169,9 +173,12 @@ def main(cp_dir, n_boards, tick, bind_thresh):
     aw = np.mean(away) if away else float('nan')
     eq = np.mean(equal) if equal else float('nan')
     print(f"     mass TOWARD goal (lower dT): {tw:.3f}   AWAY (higher dT): {aw:.3f}   equal: {eq:.3f}   toward/away ratio {tw/(aw+1e-9):.2f}")
-    print(f"  -- landmark mass --")
-    print(f"     on TARGET slot: {np.mean(m_target) if m_target else float('nan'):.3f}   "
-          f"on AGENT slot: {np.mean(m_agent) if m_agent else float('nan'):.3f}")
+    print(f"  -- landmark mass (GROUP of all slots binding the square; ~{np.mean(n_used_slots):.0f} usable slots) --")
+    print(f"     raw mass   on TARGET-slot group: {np.mean(m_target) if m_target else float('nan'):.3f}   "
+          f"on AGENT-slot group: {np.mean(m_agent) if m_agent else float('nan'):.3f}")
+    print(f"     ENRICHMENT (mass / proportional group share; 1.0 = no preference, >1 = spotlight):")
+    print(f"        TARGET: {np.mean(m_target_enr) if m_target_enr else float('nan'):.2f}x   "
+          f"AGENT: {np.mean(m_agent_enr) if m_agent_enr else float('nan'):.2f}x")
     # machine-readable block for plotting
     print("PLOT_GRAPH_PROFILE=" + repr([round(float(gprof[d]), 4) for d in range(0, 9)]))
     print("PLOT_EUCLID_PROFILE=" + repr([round(float(eprof[d]), 4) for d in range(0, 9)]))
@@ -183,6 +190,8 @@ def main(cp_dir, n_boards, tick, bind_thresh):
           unreach=round(float(np.mean(unreach)) if unreach else float('nan'), 4),
           target=round(float(np.mean(m_target)) if m_target else float('nan'), 4),
           agent=round(float(np.mean(m_agent)) if m_agent else float('nan'), 4),
+          target_enr=round(float(np.mean(m_target_enr)) if m_target_enr else float('nan'), 3),
+          agent_enr=round(float(np.mean(m_agent_enr)) if m_agent_enr else float('nan'), 3),
           slots_used=round(float(np.mean(n_used_slots)), 2))))
     print("=" * 92 + "\n")
 

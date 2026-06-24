@@ -54,12 +54,14 @@ def main(cp_dir, n_boards):
         d = np.sqrt((rr[None, :] - rr[am][:, None]) ** 2 + (cc[None, :] - cc[am][:, None]) ** 2)  # (N,S)
         db = np.clip(d.astype(int), 0, 5)
         for k in range(6):
-            mask = (db == k); radbins[k] += (wb * mask).sum(); radcnt[k] += mask.sum() / N * 0 + mask.sum()
+            mask = (db == k); radbins[k] += (wb * mask).sum(); radcnt[k] += mask.sum()
         # competition peakedness: per position, distribution over slots of who reads it (normalize over slots)
         comp = wb / (wb.sum(0, keepdims=True) + 1e-9)                          # (N,S) col-normalized
         pe = -(comp * np.log(np.clip(comp, 1e-9, 1))).sum(0)                   # (S,) entropy over slots
         comp_ent.append(pe.mean())
-        # injectivity over navigable positions: distinct winning slots / #navigable
+        # cell->slot coverage over navigable positions: distinct winning slots / #navigable. NOTE this is the
+        # TRANSPOSED map (which slot owns each cell), not slot->cell sigma-injectivity; and it rises with N even
+        # under random binding (argmax over a bigger slot pool => more distinct winners), so compare to a null.
         navpos = np.where(tiles[b] != WALL)[0]
         if len(navpos):
             win = wb[:, navpos].argmax(0)                                      # winning slot per navigable pos
