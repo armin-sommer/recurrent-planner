@@ -297,6 +297,26 @@ def sokoban_drc_attn_3_3_nomask(): return sokoban_drc_attn(3, 3, use_attention_m
 # fmt: on
 
 
+def _attn_d3_fixed4_nomask_mb4() -> Args:
+    """DENSE attention core (no locality mask; cell i == board square i, 1 cell per square = n100) matched
+    to the slot/posbind cell-count sweep recipe: D=3, FIXED 4 thinking ticks, 1.5-entmax convex-average
+    routing, 4-GPU 2a+2l mb4 layout, 300M, same checkpoint ladder (2M, 5M, then every 20M). This is the
+    n100 cell-count point -- the spatial-index core whose dense attention recovers the transition graph."""
+    args = sokoban_drc_attn(3, 4, use_attention_mask=False, readout="softmax", attn_norm="entmax15",
+                            directional_value=False, relative_key=False)
+    args.total_timesteps = 300_000_000
+    _bs = 256 * 20
+    args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(20e6 / _bs) * i for i in range(1, 16)])
+    args.local_num_envs = 128; args.num_actor_threads = 1
+    args.actor_device_ids = [0, 1]; args.learner_device_ids = [2, 3]; args.num_minibatches = 4
+    return args
+
+
+# fmt: off
+def sokoban_drc_attn_d3_fixed4_nomask_mb4(): return _attn_d3_fixed4_nomask_mb4()  # n100 dense-attention cell-count point
+# fmt: on
+
+
 def sokoban_drc_attn_vardepth():
     """Spatial DENSE attention (no mask), softmax readout, ONE weight-tied cell ITERATED, trained with
     VARIABLE thinking depth (d ~ U{0..6} sampled per rollout cycle; learner replays at that depth).
