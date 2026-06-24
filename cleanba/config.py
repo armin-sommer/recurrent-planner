@@ -424,10 +424,13 @@ def sokoban_drc_slots_d3_fixed4_n100(): return _slots_d3_fixed4(100)  # 1.0x cel
 def sokoban_drc_slots_d3_fixed4_n200(): return _slots_d3_fixed4(200)  # 2.0x cells: over-complete (redundant slots)
 def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cells: under-complete (slots must share)
 # D1: learned-but-task-STABLE positional binding (midpoint between dense attention's GIVEN cell=square and
-# the slot core's per-task content-addressed sigma). Uses the SAME 4-GPU/mb4 layout as the trained content
-# n100 (`_n100_mb4`), so the ONLY difference vs that run is binding="positional" -> a clean control isolating
-# "does a stable binding restore transition-graph routing". 1:1 capacity match to dense attention.
+# the slot core's per-task content-addressed sigma). Warm-started to a COARSE-GRID partition of the board
+# (identity at n100=dense attention; ~H*W/N squares per cell below), so the binding is stable across tasks
+# and routing sees one fixed (coarse) graph. Same 4-GPU/mb4 layout as the trained content n100. The
+# CELL-COUNT SWEEP: n100 = dense attention (1 cell/square); n50 = 2 squares/cell; n20 = ~5 squares/cell.
 def sokoban_drc_slots_d3_fixed4_n100_posbind(): return _slots_d3_fixed4_4gpu_mb4(100, binding="positional")
+def sokoban_drc_slots_d3_fixed4_n50_posbind():  return _slots_d3_fixed4_4gpu_mb4(50,  binding="positional")
+def sokoban_drc_slots_d3_fixed4_n20_posbind():  return _slots_d3_fixed4_4gpu_mb4(20,  binding="positional")
 # fmt: on
 
 
