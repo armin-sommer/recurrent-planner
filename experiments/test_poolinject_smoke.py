@@ -26,7 +26,7 @@ cases = [
 for name, fn, C, H, W, nact in cases:
     args = fn(); net = args.net; rec = net.recurrent
     print(f"\n=== {name}: D={net.n_recurrent} ticks={net.repeats_per_step} cells={rec.num_cells} "
-          f"routing={rec.routing_norm} read_tokens={rec.read_tokens} skip_final={net.skip_final} "
+          f"routing={rec.routing_norm} pool={rec.pool} skip_final={net.skip_final} "
           f"embed_layers={len(net.embed)} vtd={args.variable_thinking_depth}")
     envs, B = fake_envs(C, H, W, nact)
     policy, carry, params = net.init_params(envs, jax.random.PRNGKey(0))

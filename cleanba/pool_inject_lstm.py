@@ -8,17 +8,12 @@ identical (a learnable per-cell identity mu_i breaks the symmetry) and different
 dense cell<->cell ROUTING attention + the LSTM gate. This is the natural core for first-person / partial
 observation, where there is no allocentric grid to pin cells to.
 
-Per thinking tick, each cell receives:
-  * INJECT (same for all cells): a projection of the pooled encoder features  -- "every cell same input".
-  * TOP-DOWN: prev_layer_hidden, the lower stacked cell's output (so depth D>1 is meaningful; unlike the
-    slot cell, which ignores it).
-  * ROUTE: a dense cell<->cell self-attention message (softmax / 1.5-entmax / sparsemax over source
-    cells), the same routing op as the slot core -- the ``route_attn`` map the E4 probe reads.
-Then the proven LSTM gate integrates [inject+topdown, route] with the carry.
-
-Optional ``read_tokens`` adds a Perceiver-style cross-attention read of the encoder tokens (softmax over
-TOKENS, not the slot competition) so cells can pull spatial detail -- the ablation knob; default OFF = the
-pure pool-and-inject design. ``skip_final`` MUST be False (the carry is (B,N,d), not the spatial embed).
+Structurally this is the slot core (cleanba.slot_lstm) with the slot-attention BINDING read replaced by
+pool-and-inject: every cell receives the SAME projected pooled-encoder vector as its input message, and
+the dense cell<->cell routing (the ``route_attn`` map the E4 probe reads) is unchanged. Everything else
+(the per-cell mu identity, RMSNorm pre-norm, the LSTM gate, the carry shape, the episode-start reset) is
+kept identical to the validated slot cell. ``skip_final`` MUST be False (carry is (B,N,d), not the embed).
+prev_layer_hidden is unused (depth is carried through the carry, exactly as in the slot core).
 """
 from __future__ import annotations
 
@@ -48,8 +43,6 @@ class PoolInjectCellConfig:
 
     # --- pool-and-inject ---
     pool: Literal["mean", "max", "meanmax"] = "meanmax"  # how the encoder tokens are pooled to the global vector
-    read_tokens: bool = False           # ABLATION: also Perceiver-cross-attend the encoder tokens (softmax
-                                        # over tokens). False = pure pool-and-inject ("every cell same input").
 
     # --- stability ---
     mu_init_scale: float = 1.0          # stddev of the learnable per-cell identity mu_i (symmetry breaking)
@@ -103,8 +96,8 @@ class PoolInjectCell(nn.RNNCellBase):
     def __call__(
         self, carry: LSTMCellState, inputs: jax.Array, prev_layer_hidden: jax.Array
     ) -> tuple[LSTMCellState, jax.Array]:
-        # carry.{c,h}: (B, N, d).  inputs: (B, H, W, C_embed).  prev_layer_hidden: (B, N, d) (== carry.h
-        # for a single layer; the lower stacked cell's output for D>1).
+        # carry.{c,h}: (B, N, d).  inputs: (B, H, W, C_embed).  prev_layer_hidden unused (depth via carry,
+        # exactly as in the slot core).
         B, H, W, Ce = inputs.shape
         N, d, nh = self.cfg.num_cells, self.cfg.features, self.cfg.num_heads
         assert d % nh == 0, f"features={d} must be divisible by num_heads={nh}"
@@ -113,7 +106,7 @@ class PoolInjectCell(nn.RNNCellBase):
         tokens = inputs.reshape(B, S, Ce)
 
         # Persistent learnable per-cell identity (re-added each tick): the only thing distinguishing the
-        # cells at init, so a zeroed carry (episode start) still yields distinct cells.
+        # cells at init, so a zeroed carry (episode start) still yields distinct cells. (== slot_mu.)
         cell_id = self.param("cell_mu", nn.initializers.normal(self.cfg.mu_init_scale), (N, d))
         h = carry.h + cell_id[None]  # (B, N, d): identity-augmented recurrent state (routing source)
 
@@ -124,25 +117,10 @@ class PoolInjectCell(nn.RNNCellBase):
         if self.cfg.pool in ("max", "meanmax"):
             parts.append(tokens.max(axis=1))                      # (B, Ce)
         g = jnp.concatenate(parts, axis=-1)                       # (B, Ce or 2Ce)
-        inject = nn.Dense(d, name="inject")(g)[:, None, :]        # (B, 1, d) -> broadcast to all N cells
-        # Top-down stack input (makes depth meaningful; for D=1 this is a projection of carry.h).
-        topdown = nn.Dense(d, use_bias=False, name="topdown")(prev_layer_hidden)  # (B, N, d)
-        m_in = inject + topdown                                   # (B, N, d): the per-cell input message
+        inj = nn.Dense(d, name="inject")(g)                       # (B, d)
+        m_in = jnp.broadcast_to(inj[:, None, :], (B, N, d))       # (B, N, d): SAME input to every cell
 
-        # Optional Perceiver-style spatial read (ablation; OFF => pure pool-inject).
-        if self.cfg.read_tokens:
-            hr0 = nn.RMSNorm(name="read_norm")(h) if self.cfg.pre_norm else h
-            qr0 = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="read_q")(hr0)      # (B,N,nh,dh)
-            kr0 = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="read_k")(tokens)   # (B,S,nh,dh)
-            vr0 = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="read_v")(tokens)   # (B,S,nh,dh)
-            Lr = jnp.einsum("bnhe,bshe->bhns", qr0, kr0) * (dh ** -0.5)
-            wr = jax.nn.softmax(Lr, axis=-1)                       # over TOKENS (standard attention, not competition)
-            self.sow("intermediates", "read_attn", wr)
-            m_read = jnp.einsum("bhns,bshe->bnhe", wr, vr0)
-            m_read = nn.DenseGeneral(d, axis=(-2, -1), use_bias=False, name="read_out")(m_read)
-            m_in = m_in + m_read
-
-        # ---------------- ROUTE: dense cell<->cell self-attention (the recovered graph) ----------------
+        # ---------------- ROUTE: dense cell<->cell self-attention (identical to the slot core) ----------
         hr = nn.RMSNorm(name="route_norm")(h) if self.cfg.pre_norm else h
         qr = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="route_q")(hr)  # (B,N,nh,dh)
         kr = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="route_k")(hr)

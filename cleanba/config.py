@@ -430,18 +430,17 @@ def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cel
 # ==================================================================================================
 def sokoban_drc_poolinject(n_recurrent: int = 3, num_repeats: int = 4, num_cells: int = 100,
                            routing_norm: Literal["softmax", "entmax15", "sparsemax"] = "entmax15",
-                           num_heads: int = 4, read_tokens: bool = False) -> Args:
+                           num_heads: int = 4) -> Args:
     """Pool-and-inject core on Sokoban -- the positional-binding-free CONTROL for the first-person runs.
     Same proven recipe as `sokoban_drc_slots`, swapping the slot binding (competitive per-position read)
-    for pool-and-inject (one global vector to every cell). With read_tokens=False the cells get NO spatial
-    layout, only a pooled summary, so on Sokoban this is expected to be a weaker planner than the
-    positional dense/slot cores -- that gap is the point of the comparison."""
+    for pool-and-inject (one global vector to every cell). The cells get NO spatial layout, only a pooled
+    summary, so on Sokoban this is expected to be a weaker planner than the positional dense/slot cores --
+    that gap is the point of the comparison."""
     args = sokoban_drc33_59()  # inherit the proven recipe (grad clip, vtrace, light L2, valid_medium eval)
     args.net = PoolInjectLSTMConfig(
         embed=[ConvConfig(32, (4, 4), (1, 1), "SAME", True)] * 2,
         recurrent=PoolInjectCellConfig(
-            features=32, num_cells=num_cells, num_heads=num_heads,
-            routing_norm=routing_norm, read_tokens=read_tokens,
+            features=32, num_cells=num_cells, num_heads=num_heads, routing_norm=routing_norm,
         ),
         n_recurrent=n_recurrent, mlp_hiddens=(256,), repeats_per_step=num_repeats,
         skip_final=False,  # CRITICAL: (B,N,d) carry can't accept the base's spatial embed skip-add
