@@ -360,6 +360,7 @@ def sokoban_drc_slots(
     routing_readout: Literal["softmax", "maxplus"] = "softmax",
     routing_norm: Literal["softmax", "entmax15", "sparsemax"] = "softmax",
     num_heads: int = 4,
+    binding: Literal["content", "positional"] = "content",
 ) -> Args:
     """Same setup as `sokoban_drc`, but with the LEARNABLE-SLOT relational core (cleanba.slot_lstm).
 
@@ -381,6 +382,7 @@ def sokoban_drc_slots(
             num_heads=num_heads,
             routing_readout=routing_readout,
             routing_norm=routing_norm,
+            binding=binding,
         ),
         n_recurrent=n_recurrent,
         mlp_hiddens=(256,),
@@ -399,16 +401,18 @@ def sokoban_drc_slots_softmax(): return sokoban_drc_slots(routing_readout="softm
 def sokoban_drc_slots_maxplus(): return sokoban_drc_slots(routing_readout="maxplus")  # VIN-aligned soft Bellman max-plus routing variant
 
 
-def _slots_d3_fixed4(num_slots: int) -> Args:
+def _slots_d3_fixed4(num_slots: int, binding: Literal["content", "positional"] = "content") -> Args:
     """Latent-cell-count sweep on the slot core: D=3, FIXED 4 thinking ticks, dense slot<->slot routing
     with 1.5-entmax (exact-zero weights => a hard learned graph N, matching the attention planning core),
     softmax binding competition. `num_slots` varies the number of free latent cells against the
-    100-square board (the binding-capacity question). No `variable_thinking_depth` => the scan runs
-    exactly 4 ticks every env step; the during-training eval still sweeps thinking 0..8 (steps_to_think
-    inherited from sokoban_drc_slots) to test reactive (0) and extrapolation (8). Same 300M schedule +
-    checkpoint ladder (2M, 5M, then every 20M to 300M) as the d3 planning core, so the probes transfer."""
+    100-square board (the binding-capacity question). `binding="positional"` (D1) swaps the content-
+    addressed binding for a learned but task-STABLE slot<->position template (see SlotCellConfig.binding).
+    No `variable_thinking_depth` => the scan runs exactly 4 ticks every env step; the during-training eval
+    still sweeps thinking 0..8 (steps_to_think inherited from sokoban_drc_slots) to test reactive (0) and
+    extrapolation (8). Same 300M schedule + checkpoint ladder (2M, 5M, then every 20M to 300M) as the d3
+    planning core, so the probes transfer."""
     args = sokoban_drc_slots(n_recurrent=3, num_repeats=4, num_slots=num_slots,
-                             routing_readout="softmax", routing_norm="entmax15")
+                             routing_readout="softmax", routing_norm="entmax15", binding=binding)
     args.total_timesteps = 300_000_000
     _bs = 256 * 20  # checkpoints at 2M, 5M, then every 20M to 300M (15 pts)
     args.eval_at_steps = frozenset([int(2e6 / _bs), int(5e6 / _bs)] + [int(20e6 / _bs) * i for i in range(1, 16)])
@@ -419,6 +423,10 @@ def _slots_d3_fixed4(num_slots: int) -> Args:
 def sokoban_drc_slots_d3_fixed4_n100(): return _slots_d3_fixed4(100)  # 1.0x cells: 100 slots == 100 board states (1:1)
 def sokoban_drc_slots_d3_fixed4_n200(): return _slots_d3_fixed4(200)  # 2.0x cells: over-complete (redundant slots)
 def sokoban_drc_slots_d3_fixed4_n50():  return _slots_d3_fixed4(50)   # 0.5x cells: under-complete (slots must share)
+# D1: learned-but-task-STABLE positional binding (midpoint between dense attention's GIVEN cell=square and
+# the slot core's per-task content-addressed sigma). n100 = 1:1 capacity match to dense attention so the only
+# difference vs the content-binding n100 is the addressing -> isolates "does a stable binding restore graph routing".
+def sokoban_drc_slots_d3_fixed4_n100_posbind(): return _slots_d3_fixed4(100, binding="positional")
 # fmt: on
 
 

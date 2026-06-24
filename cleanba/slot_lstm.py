@@ -73,6 +73,21 @@ class SlotCellConfig:
                                         # capacity match to the 10x10 board (cleanest binding).
     num_heads: int = 4
 
+    # --- binding sigma (slot <- board) addressing mode ---
+    binding: Literal["content", "positional"] = "content"
+                                        # "content" (default slot core): the assignment is queried by the
+                                        #   EVOLVING slot hidden -> content-addressed, RE-INDEXES per board
+                                        #   (slot i means a different square each task; routing cannot then
+                                        #   encode a fixed graph and degenerates to a global broadcast).
+                                        # "positional" (D1): the assignment is a learned, board-INDEPENDENT
+                                        #   template -- a fixed per-slot address x fixed per-position key,
+                                        #   both parameters -- so the slot<->position map is the SAME across
+                                        #   tasks (a discovered, stable injection, not the given cell=square
+                                        #   identity). WHAT each slot reads is still the board content at its
+                                        #   fixed positions. This is the midpoint between dense attention's
+                                        #   GIVEN binding and the slot core's per-task LEARNED one, and the
+                                        #   test of whether a stable binding restores transition-graph routing.
+
     # --- routing (slot<->slot) aggregation ---
     routing_readout: Literal["softmax", "maxplus"] = "softmax"  # softmax = most stable (and the
                                         # strongest attn arm empirically); maxplus = VIN-aligned soft
@@ -178,11 +193,22 @@ class SlotCell(nn.RNNCellBase):
         # normalization that ties (binds) distinct slots to distinct states. Then a per-slot
         # weighted MEAN over its assigned tokens reads that state's local configuration into the slot.
         # ----------------------------------------------------------------------------------------
-        hb = nn.RMSNorm(name="bind_norm")(h) if self.cfg.pre_norm else h
-        qb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_q")(hb)      # (B,N,nh,dh)
-        kb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_k")(tokens)  # (B,S,nh,dh)
-        vb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_v")(tokens)  # (B,S,nh,dh)
-        logits = jnp.einsum("bnhe,bshe->bhns", qb, kb) * (dh ** -0.5)                   # (B,nh,N,S)
+        if self.cfg.binding == "positional":
+            # D1: WHERE each slot reads is a learned, board-INDEPENDENT template (stable across tasks);
+            # WHAT it reads is the board content at those positions. The assignment logits are a fixed
+            # per-slot address x fixed per-position key (both params), so `weights` below is identical on
+            # every board -- a discovered soft injection sigma:positions->slots, not re-indexed per task.
+            addr = self.param("bind_addr", nn.initializers.normal(0.02), (N, nh, dh))   # fixed per-slot query
+            kpos = self.param("bind_kpos", nn.initializers.normal(0.02), (S, nh, dh))   # fixed per-position key
+            logits = jnp.einsum("nhe,she->hns", addr, kpos)[None] * (dh ** -0.5)        # (1,nh,N,S) board-indep
+            logits = jnp.broadcast_to(logits, (B, nh, N, S))                            # (B,nh,N,S)
+            vb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_v")(tokens)  # (B,S,nh,dh) content
+        else:
+            hb = nn.RMSNorm(name="bind_norm")(h) if self.cfg.pre_norm else h
+            qb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_q")(hb)      # (B,N,nh,dh)
+            kb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_k")(tokens)  # (B,S,nh,dh)
+            vb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_v")(tokens)  # (B,S,nh,dh)
+            logits = jnp.einsum("bnhe,bshe->bhns", qb, kb) * (dh ** -0.5)                   # (B,nh,N,S)
         comp = jax.nn.softmax(logits, axis=2)                                          # over SLOTS (competition)
         weights = comp / (comp.sum(axis=3, keepdims=True) + 1e-8)                       # normalize over tokens
         self.sow("intermediates", "bind_attn", weights)  # (B,nh,N,S): slot->board-position binding map
