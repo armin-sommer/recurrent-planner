@@ -63,6 +63,18 @@ from cleanba.convlstm import BaseLSTM, BaseLSTMConfig, ConvConfig, LSTMCellState
 from cleanba.entmax import normalize as normalize_attn
 
 
+def _identity_logit_init(diag_scale: float):
+    """Init a (nh, N, S) positional-binding logit table to the dense-attention IDENTITY: slot i -> board
+    position round(i*S/N) gets `diag_scale`, all else 0, so the softmax-over-slots competition starts as
+    cell=square (slot i reads ~position i) and is then free to adapt. For N==S this is the exact identity."""
+    def init(key, shape, dtype=jnp.float32):
+        nh, N, S = shape
+        idx = jnp.clip(jnp.round(jnp.arange(N) * (S / N)).astype(jnp.int32), 0, S - 1)
+        base = jnp.zeros((N, S), dtype).at[jnp.arange(N), idx].set(diag_scale)
+        return jnp.broadcast_to(base[None], (nh, N, S))
+    return init
+
+
 # --------------------------------------------------------------------------------------------------
 # Configs
 # --------------------------------------------------------------------------------------------------
@@ -87,6 +99,11 @@ class SlotCellConfig:
                                         #   fixed positions. This is the midpoint between dense attention's
                                         #   GIVEN binding and the slot core's per-task LEARNED one, and the
                                         #   test of whether a stable binding restores transition-graph routing.
+    bind_init_diag: float = 6.0         # (binding="positional" only) diagonal logit of the warm-started
+                                        # identity template: slot i starts reading ~board position i (the
+                                        # dense-attention cell=square binding), then adapts. ~6 => ~0.8 of the
+                                        # per-position slot-competition on the diagonal at init; higher =>
+                                        # sharper/closer to a hard identity (but flatter off-diagonal grads).
 
     # --- routing (slot<->slot) aggregation ---
     routing_readout: Literal["softmax", "maxplus"] = "softmax"  # softmax = most stable (and the
@@ -194,14 +211,13 @@ class SlotCell(nn.RNNCellBase):
         # weighted MEAN over its assigned tokens reads that state's local configuration into the slot.
         # ----------------------------------------------------------------------------------------
         if self.cfg.binding == "positional":
-            # D1: WHERE each slot reads is a learned, board-INDEPENDENT template (stable across tasks);
-            # WHAT it reads is the board content at those positions. The assignment logits are a fixed
-            # per-slot address x fixed per-position key (both params), so `weights` below is identical on
-            # every board -- a discovered soft injection sigma:positions->slots, not re-indexed per task.
-            addr = self.param("bind_addr", nn.initializers.normal(0.02), (N, nh, dh))   # fixed per-slot query
-            kpos = self.param("bind_kpos", nn.initializers.normal(0.02), (S, nh, dh))   # fixed per-position key
-            logits = jnp.einsum("nhe,she->hns", addr, kpos)[None] * (dh ** -0.5)        # (1,nh,N,S) board-indep
-            logits = jnp.broadcast_to(logits, (B, nh, N, S))                            # (B,nh,N,S)
+            # D1: WHERE each slot reads is a learned, board-INDEPENDENT template, WARM-STARTED to the
+            # dense-attention identity (slot i <- board position i) and free to adapt. The logits are a
+            # parameter (no board input), so `weights` below is identical on every board -- a stable
+            # injection sigma:positions->slots, not re-indexed per task. WHAT each slot reads is still the
+            # board content at its positions. (Identity warm-start avoids the degenerate near-uniform init.)
+            logits2d = self.param("bind_logits", _identity_logit_init(self.cfg.bind_init_diag), (nh, N, S))
+            logits = jnp.broadcast_to(logits2d[None], (B, nh, N, S))                        # (B,nh,N,S) board-indep
             vb = nn.DenseGeneral((nh, dh), axis=-1, use_bias=False, name="bind_v")(tokens)  # (B,S,nh,dh) content
         else:
             hb = nn.RMSNorm(name="bind_norm")(h) if self.cfg.pre_norm else h

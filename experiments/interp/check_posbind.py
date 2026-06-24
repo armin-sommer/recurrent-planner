@@ -62,7 +62,11 @@ for name, fn in [("content-n100", sokoban_drc_slots_d3_fixed4_n100),
           f"tick-spread={tick_spread:.2e}")
     if rec.binding == "positional":
         assert batch_spread < 1e-6, f"positional binding should be board-INDEPENDENT, got spread {batch_spread}"
-        print("   ==> OK: positional binding is a FIXED template, identical across all boards (and ticks).")
+        wmean = ba.mean(1)[0]                                                      # (N,S) head-avg (board-indep)
+        diag_frac = float((wmean.argmax(1) == np.arange(wmean.shape[0])).mean())   # slot i reads position i?
+        print(f"   identity warm-start: slot-i-reads-position-i fraction = {diag_frac:.3f} (expect ~1.0 at init)")
+        assert diag_frac > 0.9, f"identity warm-start expected slot i -> position i, got {diag_frac}"
+        print("   ==> OK: positional binding is a FIXED template warm-started to the cell=square identity.")
     else:
         assert batch_spread > 1e-4, f"content binding should vary by board, got spread {batch_spread}"
         print("   ==> OK: content binding varies board-to-board (re-indexed), as expected.")
