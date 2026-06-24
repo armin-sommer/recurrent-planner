@@ -59,6 +59,57 @@ representation behind a diffuse attention read.** The **agent** is bound most st
 So adding cells trades per-slot sharpness for broader, more redundant coverage; binding itself emerges
 robustly at **both** budgets.
 
+## Finding 4 — the binding *geometry*: a soft pointer, not spatial diffusion
+
+`slot_binding_geometry.py` resolves what the diffuse read actually *is*. Each slot's read over the 100
+squares is a **spike + flat background**, not a spatial blob:
+
+| | n50 | n100 |
+|---|---|---|
+| spike height (mass on the argmax square) | 0.124 | 0.112 |
+| spike / background ratio | ~15× | ~13× |
+| read spatial spread / uniform | 0.99 | 1.04 |
+| radial mass at board-dist 0 / 1 / 2 / 5 | .124/.015/.010/.008 | .112/.013/.009/.009 |
+| navigable→slot injectivity | 0.638 | 0.789 |
+| competition entropy over slots (vs uniform) | 3.56 / 3.91 | 4.25 / 4.61 |
+
+The radial profile is the key: mass drops from the spike to the background **in a single step** — a distance-1
+neighbour gets barely more than a distance-5 cell, so there is **no neighbourhood blur / receptive field**.
+The "spread ≈ uniform" reading is just the flat background (~88% of the mass, dominating the spatial
+variance); the *binding* is the ~12% spike riding on top. So σ(slot) = the spike square — a **learned soft
+pointer**, argmax-recoverable, with the slot's hidden carrying that square's tile (the 0.71 decode). Over the
+**navigable** squares the pointer is **majority-distinct** (0.64 → 0.79 as slots grow): roughly each walkable
+square gets its own slot, more cleanly when slots are abundant. This is mechanistically *why* a diffuse read
+and a localized hidden coexist — the binding is a sparse pointer hidden inside a flat background, not a
+diffusion kernel.
+
+## Finding 5 — message passing (routing): a global goal-anchored broadcast, not graph diffusion
+
+`e4_slot.py` recovers what the slot↔slot **routing** (the per-tick message passing) computes, by binning each
+routing row by the BFS board-graph distance between the slots' bound squares. Unlike the spatial attention
+core — where E4 was the headline *transition-graph recovery* (mass decays ~ρ^d, goal-ward) — the slot routing
+does **not** recover board adjacency:
+
+| | n50 | n100 |
+|---|---|---|
+| ρ_graph (per-shell decay; 1.0 = none) | 0.967 | 0.946 |
+| self-route mass | 0.028 | 0.021 |
+| mass to graph-adjacent (1-hop) slots | 0.148 | 0.128 |
+| mass **beyond** 1 hop | 0.705 | 0.721 |
+| goal-ward ratio (toward/away) | 0.93 | 1.03 |
+| **mass onto the TARGET slot** | **0.147 (~4.4×)** | **0.150 (~8×)** |
+| mass onto the AGENT slot | 0.081 | 0.068 |
+| through-wall (spurious-edge) mass | 0.000 | 0.000 |
+
+Routing is **near-distance-agnostic** (ρ≈1, ~72% of mass beyond one hop, negligible self-loop) with **no value
+gradient** (toward-goal ≈ away-goal) — so it is *not* a hop-by-hop diffusion on the recovered graph. But it is
+**not** uniform either: every slot pulls disproportionately from the single **target slot** (~4–8× uniform)
+and somewhat from the **agent slot**, and **zero** mass crosses walls. So the routing is a **global broadcast
+anchored on the goal/landmarks**: the board's relational structure lives in *where slots bind* (Finding 4),
+and routing then mixes globally while spotlighting the reward source. This is a genuinely *different*
+message-passing algorithm than the grid-wired core's local graph diffusion — worth stating plainly rather
+than forcing the graph-recovery frame.
+
 ## Interpretation
 
 Binding is **not** a property of injective cell↔square wiring (the attention core got that for free from the
