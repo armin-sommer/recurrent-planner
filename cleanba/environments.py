@@ -410,7 +410,11 @@ class MiniWorldConfig(EnvConfig):
     env_id: str = "MiniWorld-MazeS3Fast-v0"
     max_episode_steps: int = 300
     asynchronous: bool = True
-    headless: bool = True        # set EGL + pyglet-headless in each worker (servers without a display)
+    headless: bool = False       # True => pyglet EGL headless (GPU, but works ONLY in the main process;
+                                 # NVIDIA EGL fails in spawned AsyncVectorEnv workers). False => pyglet X11,
+                                 # which needs a display: launch the run under `xvfb-run` (the working
+                                 # multiprocess path; ~3.7k env-steps/s). Use headless=True only for a single
+                                 # in-process env (e.g. probing).
     view: Literal["agent", "top"] = "agent"  # "agent" = egocentric first-person (the regime we want)
     nn_without_noop: bool = False  # the 3 nav actions have no noop to strip
 

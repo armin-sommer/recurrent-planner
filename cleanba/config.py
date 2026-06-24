@@ -465,7 +465,7 @@ def sokoban_poolinject_d3_fixed4_4gpu_mb4(num_cells: int = 100) -> Args:
 
 
 def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_cells: int = 100,
-                                   local_num_envs: int = 64,
+                                   local_num_envs: int = 32,
                                    actor_device_ids=(0,), learner_device_ids=(0,)) -> Args:
     """First-person MiniWorld with the pool-and-inject core, D=3, FIXED 4 ticks, 1.5-entmax routing.
 
@@ -483,10 +483,13 @@ def miniworld_poolinject_d3_fixed4(env_id: str = "MiniWorld-MazeS3Fast-v0", num_
         ConvConfig(32, (4, 4), (2, 2), "SAME", True),   # 15x20 -> 8x10
         ConvConfig(32, (3, 3), (1, 1), "SAME", True),   # 8x10
     ])
-    args.train_env = MiniWorldConfig(env_id=env_id, max_episode_steps=300, asynchronous=True, headless=True)
+    # headless=False => pyglet X11 backend; the run MUST be launched under `xvfb-run` (NVIDIA EGL works in
+    # the main process but FAILS in spawned AsyncVectorEnv workers -- eglChooseConfig NoSuchConfig -- so a
+    # shared xvfb virtual display is the working multiprocess path; ~3.7k env-steps/s, validated on the pod).
+    args.train_env = MiniWorldConfig(env_id=env_id, max_episode_steps=300, asynchronous=True, headless=False)
     args.eval_envs = dict(
         miniworld=EvalConfig(
-            MiniWorldConfig(env_id=env_id, num_envs=64, max_episode_steps=300, asynchronous=True, headless=True),
+            MiniWorldConfig(env_id=env_id, num_envs=16, max_episode_steps=300, asynchronous=True, headless=False),
             n_episode_multiple=1, steps_to_think=[0, 4],
         )
     )
