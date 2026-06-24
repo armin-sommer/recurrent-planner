@@ -83,7 +83,9 @@ def _coarse_grid_logit_init(diag_scale: float, H: int, W: int):
                 if err < best:
                     best, gh, gw = err, r, N // r
         a = jnp.repeat(jnp.arange(gh), gw); b = jnp.tile(jnp.arange(gw), gh)   # (N,) cell row/col index
-        cen_r = (a + 0.5) * (H / gh); cen_c = (b + 0.5) * (W / gw)             # (N,) centroid in board coords
+        # centroid = center of cell (a,b)'s block IN SQUARE-INDEX coords (0..H-1), so N==H*W is the exact
+        # identity (centroid a,b == square a,b) and blocks align to the integer square grid.
+        cen_r = a * (H / gh) + (H / gh - 1) / 2.0; cen_c = b * (W / gw) + (W / gw - 1) / 2.0   # (N,)
         sq_r = (jnp.arange(S) // W).astype(jnp.float32); sq_c = (jnp.arange(S) % W).astype(jnp.float32)
         d2 = (sq_r[None, :] - cen_r[:, None]) ** 2 + (sq_c[None, :] - cen_c[:, None]) ** 2  # (N,S)
         nearest = jnp.argmin(d2, axis=0)                                      # (S,) cell owning each square
