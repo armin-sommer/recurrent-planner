@@ -73,16 +73,15 @@ def _coarse_grid_logit_init(diag_scale: float, H: int, W: int):
     exact identity (slot i <- square i = dense attention); N < H*W gives ~H*W/N squares per cell. Because
     the table is a parameter (no board input) the partition is the SAME across tasks -> routing sees one
     fixed coarse graph and can recover it (the property the content-addressed binding lacked)."""
-    aspect = H / W
-    gh, gw, best = 1, N, float("inf")
-    for r in range(1, N + 1):                                   # gh x gw == N, aspect closest to the board
-        if N % r == 0:
-            err = abs((r / (N // r)) - aspect)
-            if err < best:
-                best, gh, gw = err, r, N // r
-
     def init(key, shape, dtype=jnp.float32):
-        nh, _N, S = shape
+        nh, N, S = shape
+        aspect = H / W
+        gh, gw, best = 1, N, float("inf")
+        for r in range(1, N + 1):                               # gh x gw == N, aspect closest to the board
+            if N % r == 0:
+                err = abs((r / (N // r)) - aspect)
+                if err < best:
+                    best, gh, gw = err, r, N // r
         a = jnp.repeat(jnp.arange(gh), gw); b = jnp.tile(jnp.arange(gw), gh)   # (N,) cell row/col index
         cen_r = (a + 0.5) * (H / gh); cen_c = (b + 0.5) * (W / gw)             # (N,) centroid in board coords
         sq_r = (jnp.arange(S) // W).astype(jnp.float32); sq_c = (jnp.arange(S) % W).astype(jnp.float32)
