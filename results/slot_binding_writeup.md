@@ -73,17 +73,39 @@ squares is a **spike + flat background**, not a spatial blob:
 | navigable→slot injectivity | 0.638 | 0.789 |
 | competition entropy over slots (vs uniform) | 3.56 / 3.91 | 4.25 / 4.61 |
 
-The radial profile is the key: mass drops from the spike to the background **in a single step** — a distance-1
-neighbour gets barely more than a distance-5 cell, so there is **no neighbourhood blur / receptive field**.
-The "spread ≈ uniform" reading is just the flat background (~88% of the mass, dominating the spatial
-variance); the *binding* is the ~12% spike riding on top. So σ(slot) = the spike square — a **learned soft
-pointer**, argmax-recoverable, with the slot's hidden carrying that square's tile (the 0.71 decode). Over the
-**navigable** squares the pointer is **majority-distinct** (0.64 → 0.79 as slots grow): roughly each walkable
-square gets its own slot, more cleanly when slots are abundant. This is mechanistically *why* a diffuse read
-and a localized hidden coexist — the binding is a sparse pointer hidden inside a flat background, not a
-diffusion kernel.
+The radial profile is the key: mass drops from the ~15× spike almost to the flat background within one ring
+(a faint shoulder remains — dist-1 ≈ 1.9×, dist-2 ≈ 1.25× the floor — a weak local component, *not* a wide
+receptive field). The "spread ≈ uniform" reading is just the flat background (~88% of the mass, dominating the
+spatial variance; for contrast a true local Gaussian blob simulates at spread ≈0.35); the *binding* is the
+~12% spike riding on top. So σ(slot) = the spike square — a **learned soft pointer**, argmax-recoverable, with
+the slot's hidden carrying that square's tile (the 0.71 decode). This is mechanistically *why* a diffuse read
+and a localized hidden coexist — the binding is a sparse pointer inside a near-flat background, not a diffusion
+kernel. (The 0.638/0.789 figures are the *transposed* cell→slot coverage — which slot owns each navigable
+square — and rise with N even under random binding; see caveats.)
 
-## Finding 5 — message passing (routing): a global goal-anchored broadcast, not graph diffusion
+## Finding 5 — the binding RE-INDEXES per task; emergent agent-slot role
+
+`slot_role_consistency.py` asks whether slot #k *means* the same thing across boards. Position is **content-
+addressed / re-indexed**, with an emergent **role** prior for the agent (numbers vs the corrected
+navigable-square null):
+
+| | n50 | n100 |
+|---|---|---|
+| slots position-locked (fixed grid cell) | **0 / 50** | **0 / 100** |
+| per-slot position spread / navigable-null | 1.05 | 1.13 |
+| agent-slot index entropy (vs ln N) | **1.37 / 3.91** | 2.42 / 4.61 |
+| agent: top-1 slot used on … of boards | **54 %** | 32 % |
+| target-slot index entropy (all targets) | 3.20 / 3.91 | 3.67 / 4.61 |
+| max P(a slot binds the agent) | 0.62 | 0.38 |
+
+**No slot is a fixed grid cell** (0 position-locked; spread ≈ the random-navigable ceiling), so the slot↔square
+map is rebuilt per board by content competition — *not* a static grid. But the network has learned a **role
+prior**: there is a fairly **dedicated agent slot** (one index reads the agent on 54 % of n50 boards, index
+entropy 1.37 ≪ 3.91), with weaker target specialization. n100 smears the agent role over more redundant slots.
+This is the slot-attention signature — bind-by-content, re-index per input, with emergent specialization for
+the salient recurring entity (the agent).
+
+## Finding 6 — message passing (routing): a near-uniform global broadcast, not graph diffusion
 
 `e4_slot.py` recovers what the slot↔slot **routing** (the per-tick message passing) computes, by binning each
 routing row by the BFS board-graph distance between the slots' bound squares. Unlike the spatial attention
@@ -97,33 +119,47 @@ does **not** recover board adjacency:
 | mass to graph-adjacent (1-hop) slots | 0.148 | 0.128 |
 | mass **beyond** 1 hop | 0.705 | 0.721 |
 | goal-ward ratio (toward/away) | 0.93 | 1.03 |
-| **mass onto the TARGET slot** | **0.147 (~4.4×)** | **0.150 (~8×)** |
-| mass onto the AGENT slot | 0.081 | 0.068 |
+| TARGET-slot enrichment (group-corrected) | **0.83×** | **1.04×** |
+| AGENT-slot enrichment (group-corrected) | **0.94×** | **1.08×** |
 | through-wall (spurious-edge) mass | 0.000 | 0.000 |
 
-Routing is **near-distance-agnostic** (ρ≈1, ~72% of mass beyond one hop, negligible self-loop) with **no value
-gradient** (toward-goal ≈ away-goal) — so it is *not* a hop-by-hop diffusion on the recovered graph. But it is
-**not** uniform either: every slot pulls disproportionately from the single **target slot** (~4–8× uniform)
-and somewhat from the **agent slot**, and **zero** mass crosses walls. So the routing is a **global broadcast
-anchored on the goal/landmarks**: the board's relational structure lives in *where slots bind* (Finding 4),
-and routing then mixes globally while spotlighting the reward source. This is a genuinely *different*
-message-passing algorithm than the grid-wired core's local graph diffusion — worth stating plainly rather
-than forcing the graph-recovery frame.
+Routing is **near-distance-agnostic** (ρ≈1, ~72 % of mass beyond one hop, negligible self-loop) with **no value
+gradient** (toward-goal ≈ away-goal) — so it is *not* a hop-by-hop diffusion on the recovered graph. Once the
+landmark mass is compared to its **proportional group share** (≈3–4 slots bind each landmark square, so the
+raw 0.15 must be divided by that group's fair share), the target/agent **enrichment is ≈1× — no spotlight**.
+So the routing is simply a **near-uniform global broadcast** (the earlier "~4–8× goal-anchored" reading was a
+single-slot-baseline artifact). The board's relational structure lives entirely in *where slots bind*
+(Findings 4–5); routing just mixes globally, and **zero** mass crosses walls. This is a genuinely *different*
+message-passing algorithm than the grid-wired core's local graph diffusion.
 
 ## Interpretation
 
 Binding is **not** a property of injective cell↔square wiring (the attention core got that for free from the
-grid). The slot core, which must *discover* σ, lands on a different but functional solution: a **diffuse
-read into a per-slot-localized hidden** — each slot's state encodes the tile/identity of the position it
-competitively wins, at the same fidelity the grid-wired core achieves, regardless of whether slots are
-scarce (n50) or abundant (n100). This is the paper's claim — that *relational latent states learn to bind* —
-holding even when the binding map is learned from scratch and the cell budget is under/over the board size.
+grid). The slot core, which must *discover* σ, lands on a different but functional solution: a **soft-pointer
+read into a per-slot-localized hidden** — the winning slot for a square carries more of that square than a
+random slot does (so the slots are not identical board copies), the pointer re-indexes per board, and a global
+broadcast mixes the slots. This supports the paper's claim — that *relational latent states learn to bind* —
+even when σ is learned from scratch and the cell budget is under/over the board size; it just does **not**
+recover the explicit transition graph in its routing the way the grid-wired core does.
 
-## Caveats & what's next
+## Caveats (post adversarial-verification)
 
-- This is the **binding** result only. The amortized-value (E1), routing→graph (E4), reach (E5), causal
-  re-plan (E10), and decision-over-ticks (E13) ports are written but **not yet run** — those are the next
-  numbers.
-- "Winning slot" uses the argmax of the (diffuse) `bind_attn`; the competition softmax-over-slots would be a
-  cleaner assignment and may *raise* the decode numbers — current values are a lower bound.
-- Decode is the settled tick only; per-tick is available if we want the binding-vs-thinking trajectory.
+- **Hidden-binding (Finding 2) is a lower bound on a real effect, not grid-fidelity.** The winning≫random gap
+  rules out a fully-distributed/identical-copy code, but the winner is *selected* for max attention on its
+  square and `m_bind = weights·v` makes it carry the most of that square by construction, so the gap is
+  expected for *any* soft pointer. Read it as "slots are not identical copies; the winner carries more of its
+  square," not "each slot cleanly carries its square." The 0.706/0.666 averages 5 classes **including floor**;
+  the attn-core 0.72–0.78 averages 4 (floor excluded) — per-class the non-agent slot numbers sit ~3–8 pts
+  below the attn core, so drop "at attention-core fidelity."
+- **Geometry (Finding 4): not a *pure* delta.** There is a faint graded shoulder (dist-1 ≈ 1.9×, dist-2 ≈
+  1.25× the floor) — a weak local component on top of the dominant ~15× spike; "drops to the floor in one
+  step / no receptive field" was overstated. The floor ≈ 1/S is partly architectural (near-uniform slot
+  competition). The 0.638/0.789 "injectivity" is the **transposed cell→slot** coverage (and rises with N even
+  under random binding), not slot→cell σ-injectivity.
+- **Cell-count (Finding 3): the contrast is not established.** The 0.706 vs 0.666 per-slot gap is 0.04 with no
+  error bars across two single runs (plausibly noise); coverage / injectivity / slots-per-position rise with N
+  even under random binding (N is in the numerator). Defensible core: **per-slot binding emerges at both
+  budgets (~0.67–0.71 ≫ 0.50)**; "scarcity sharpens vs abundance broadens" needs seeds + an N-matched null.
+- **Still to run:** the causal/temporal ports — reach-vs-ticks (E5), per-tick operator/amortized-value (E1),
+  causal re-plan (E10), decision-over-ticks (E13) — which test whether information still *propagates over
+  ticks* despite the non-local routing.
