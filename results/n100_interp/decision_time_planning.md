@@ -116,6 +116,7 @@ the value is real and central on this core too:
 |---|---|---|
 | `bellman` | optimality residual/std = [0.15, 0.17, 0.19, 0.18] over successors 0–3 | converged value is a **Bellman fixed point** (multi-step consistent) |
 | `lookahead` | policy = argmaxₐ[r+γV(s′)] over own critic at **0.44** (chance 0.25), rises with thinking | action **is greedy over its own value** |
+| `lookahead_ctrl` (shuffle) | shuffling V across the 4 successors **collapses** agreement 0.44→**0.28** (≈chance); value-only **0.39** > reward-only 0.31; value-only-shuffled →0.20 | the 0.44 is genuine **greedy-over-own-V** (the *value* channel, not immediate reward) — the policy-improvement step is real |
 | `e9` | out-of-view path-block wall: ΔV **−1.17σ** vs −0.34σ off-path (95% drop), **builds over ticks** (−0.19→−1.17) | value **causally adopts new physics**, integrated over ticks |
 | `e6b` | goal-move corr +0.39, box-move +0.43; \|dV\| box 1.43 > goal 0.86 | value **tracks task**, box-push-aware |
 | `e2` | reward-move propagates **2.4×** a transition-change | **policy-evaluation** (goal baked into the field), not successor-rep |
@@ -134,10 +135,31 @@ physics/task-sensitive, and greedy-read — the value half of the claim is now n
   `lookahead` (policy ≈ 1-step lookahead over its own V), `e2` (eval vs successor-rep). — these, **not**
   `plan_front`, are what license any statement about the value.
 
-## Bottom line for the writeup — decision-time planning vs DP, resolved
+## Bottom line for the writeup — planning = decision-time policy improvement
 
-The honest resolution is **amortized value-based GPI with decision-time information integration** — three
-separable claims, each scoped:
+**Frame the planning as the policy-IMPROVEMENT half of GPI, performed at decision time over an amortized
+value.** GPI = evaluation + improvement; here the **evaluation is amortized into the weights by TD training**
+(the value-flow-back happens across training, not in the ticks — no in-loop value DP, `e1` wavefront empty,
+own-op coeff ≈0), and the **improvement is what the thinking loop + head do at decision time**. The improvement
+is **confirmed greedy over the model's own value**: the policy matches argmaxₐ[r+γV(s′)] at 0.44, this
+**collapses to chance (0.28) when V is shuffled** across successors, and the **value channel carries it**
+(value-only 0.39 > reward-only 0.31; `lookahead_ctrl`). The loop's distinctive role is to **deepen this
+improvement with test-time compute** — integrating non-local, graph-respecting board information into the
+representation so the greedy readout reflects an increasingly complete view (agreement rises 0.40→0.44;
+optimality 0.51→0.59; causal out-of-view re-plan, `e10`). Caveats: it is **one-step** greedy (we tested
+1-step lookahead, not multi-step), partial in magnitude (0.44, not 1.0 — entropy-regularized softmax + an
+imperfect amortized V), and the max is structurally at the head while the loop supplies the integration —
+so don't say "*just* an argmax": the planning content is the recurrent non-local integration that deepens the
+improvement. One-liner: **decision-time, one-step policy improvement over an amortized Bellman-consistent
+value, deepened by recurrent non-local information integration over the learned graph.**
+
+This supersedes the earlier "value propagation / amortized policy evaluation / value-based GPI" framing
+(those imply in-loop value-flow we don't observe). The same correction is owed in `writeup/planning_emergence.tex`
+and `writeup/theory_empirical.tex` (vardepth run), which still say "amortized policy evaluation / value
+propagation along G" — the vardepth logs (`e1_300m.log`: flat value, empty wavefront, own-op +0.01) already
+contradict it.
+
+### (superseded framing, kept for provenance) "amortized value-based GPI" — three separable claims:
 
 1. **No in-loop value-field DP** (n100-supported): the operator is stationary (no max), the loop copies its
    value forward rather than iterating it (own-op coeff +0.02 vs +0.98 identity), and the per-cell value

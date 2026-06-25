@@ -1,0 +1,17 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 17:46:10.332354: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== LOOKAHEAD + CONTROLS (step=58593, boards=256, n_act=4, gamma=0.97, K=4, chance=0.25) =====
+  deterministic resets: True
+  (real)  policy == argmax_a[r + gV(s'_a)] over OWN value : 0.438
+  (ctrl)  V shuffled across successors (r kept real)      : 0.279   rolls [0.254 0.305 0.277]
+  decompose: reward-only argmax_a r_a == policy           : 0.305
+  decompose: value-only  argmax_a V(s'_a) == policy       : 0.391
+  value-only SHUFFLED (rolls)                             : [0.164 0.215 0.215]
+  --> greedy-over-OWN-V: CONFIRMED (real 0.44 vs V-shuffled 0.28, value-only 0.39, chance 0.25)
+PLOT_LACTRL={'agree': 0.438, 'agree_shuf': 0.279, 'agree_r': 0.305, 'agree_V': 0.391, 'shuf': [0.254, 0.305, 0.277], 'shufV': [0.164, 0.215, 0.215], 'chance': 0.25}
+====================================================================================
+
