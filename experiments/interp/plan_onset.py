@@ -1,6 +1,8 @@
 """plan_onset -- IS IT DECISION-TIME PLANNING? tick x distance causal ACTION-onset probe.
 
-The decisive test for decision-time planning by inward value propagation: a board change d graph-hops
+The decisive test for decision-time planning by inward propagation -- measured in the LATENT (||dh||) and
+the ACTION (actor argmax), NOT the value (value is probed separately: value_ticks/e1/e6/e6b/e9/bellman).
+A board change d graph-hops
 from the agent should only alter the agent's ACTION after enough thinking steps for that information to
 propagate inward. So the ONSET tick at which the action diverges from baseline should RISE with the
 perturbation distance d (a change 4 hops out shows up in the action later than one 1 hop out), tracking

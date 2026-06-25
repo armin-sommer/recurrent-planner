@@ -18,7 +18,14 @@ graph structure realized some other way?
 is graph-structured is the **magnitude** of the response, not its **timing**. This is consistent with the
 theory paper's own prediction that a *dense* core propagates globally each tick with **no** spatial
 wavefront (the wavefront is the signature of *local/convolutional* routing). What survives is real and
-publishable: graph-respecting, **decision-relevant**, **global** value-shaping per tick.
+publishable: graph-respecting, **decision-relevant**, **global** shaping of the agent's **latent and
+action** per tick.
+
+> **Latent vs value (important):** `plan_front` and `plan_onset` measure the **latent** `‖Δh‖` and the
+> **action** (actor argmax) — they do **not** decode the critic, so they say nothing directly about the
+> *value function*. The value channel is probed by a **separate** suite (see "What measures what" below);
+> do not read `plan_front`'s `‖Δh‖` as "value." The earlier "value-shaping/propagation" phrasing here was a
+> conflation and is corrected throughout.
 
 ## The three probes
 
@@ -75,13 +82,27 @@ refines as info arrives" — the field probe doesn't generalize, value is amorti
 un-converged loop). One code note: the eu≥4px gate is looser than the 7px Chebyshev conv RF; `plan_front`
 fixes this with a Chebyshev gate.
 
+## What measures what (latent vs action vs value)
+
+- **Latent** (`‖Δh‖` of the hidden, not decoded into anything): `plan_front`, `plan_onset`, `e10`, `wall`,
+  `perturb`. — tells us a change *reaches* a cell, not *what* it encodes.
+- **Action** (actor-head argmax): `plan_onset`, `e10`, `e13`, `lookahead`, the thinking-curve. — the decision.
+- **Value** (critic head / decoded value field): `value_ticks` (scalar V over ticks → **amortized**, settles
+  by trained depth then drifts), `e1` (probed value field), `e6`/`e6b` (V shifts in the resolvent-predicted
+  direction under goal/box moves), `e9` (a path-blocking wall lowers V), `bellman` (V is Bellman-consistent),
+  `lookahead` (policy ≈ 1-step lookahead over its own V), `e2` (eval vs successor-rep). — these, **not**
+  `plan_front`, are what license any statement about the value.
+
 ## Bottom line for the writeup
 
-The dense n100 core realizes its graph structure as **global, graph-weighted, decision-relevant value
-shaping each tick**, not as an inward-marching decision-time search. "Planning content" (binding + a
-graph-respecting, wall-blocked, goal-anchored kernel + causal decision-relevant influence on the agent) is
-present; the *spatial-temporal mechanism* is global refinement, exactly as predicted for a dense
-(non-local) relational core. The marching-wavefront picture belongs to the local/convolutional instance.
+The dense n100 core realizes its graph structure as **global, graph-weighted, decision-relevant shaping of
+the latent (and the action) each tick**, not as an inward-marching decision-time search — so yes, it is
+doing planning, just globally rather than as a wavefront. "Planning content" (binding + a graph-respecting,
+wall-blocked, goal-anchored kernel + causal decision-relevant influence on the agent's latent and action) is
+present; the *spatial-temporal mechanism* is global refinement, exactly as predicted for a dense (non-local)
+relational core. The marching-wavefront picture belongs to the local/convolutional instance. **Value-channel
+claims** (amortized; causally tracks task/physics; Bellman/lookahead-consistent) come from the separate
+value-decoding suite above — `plan_front`/`plan_onset` measure the latent and the action, not the value.
 
 ## Reproduce
 ```sh

@@ -9,8 +9,10 @@ graph-distance-from-source. We test exactly that:
    the agent is therefore recurrent, not local conv);
  - measure normalized latent shift ||dh|| at every on-path cell between agent and source, per thinking tick,
    EXCLUDING any cell within Chebyshev `rf` of the source (drop conv leakage near the source);
- - bin cells by graph-hops-from-source j; arrival_tick(j) = first tick reaching max(0.5*value@trained-depth,
+ - bin cells by graph-hops-from-source j; arrival_tick(j) = first tick reaching max(0.5*||dh||@trained-depth,
    floor), measured WITHIN the trained depth Ktr; a positive arrival-vs-j slope = inward front;
+   NOTE: this is the LATENT shift ||dh|| (not the critic value); it says a change REACHES a cell, not what
+   the cell encodes. Value is probed separately (value_ticks / e1 / e6 / e6b / e9 / bellman / lookahead).
  - bootstrap 95% CIs over boards on the slope; compare to an OFF-path cosmetic source (does NOT lengthen the
    path) which should not drive a decision-relevant front (smaller magnitude / flatter slope).
 
