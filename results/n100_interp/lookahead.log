@@ -1,0 +1,14 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 16:00:28.546727: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== LOOKAHEAD CONSISTENCY (step=58593, boards=256, n_act=4, gamma=0.97, K=4) =====
+  deterministic level load across resets: True  (must be True)
+  policy(full depth) == 1-step-lookahead(own value): 0.438   (chance 0.25)
+  agreement w/ lookahead by thinking depth d=1..4: [0.40 0.43 0.45 0.44]  d1->K 0.40->0.44
+  boards where thinking changed the action TO the lookahead choice: 0.113
+  --> EVALUATES SUCCESSORS (lookahead-consistent); thinking INCREASES consistency
+====================================================================================
+

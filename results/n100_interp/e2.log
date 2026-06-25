@@ -1,0 +1,19 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 16:12:15.718845: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== E2: REWARD-RELABEL INVARIANCE (step=58593, boards=256, clean relabels=230, K=4) =====
+  far-field relative latent shift ||dh2||/||h2||  (cells > conv-RF from both edits) --
+     reward-move (goal relocated): 0.2907   over n=189 boards
+     wall-flip   (P changed)     : 0.1205
+     ratio reward/wall           : 2.41
+  agent-cell relative latent shift (agent clean of both edits, n=140) --
+     reward-move 0.2202   wall-flip 0.1018   ratio 2.16
+  readout value shift |dV|/std(V) : reward-move 0.690   wall-flip 0.331   (std(V)=1.78)
+  -- VERDICT --
+     reward-move propagates ~as much as a P-change (ratio 2.41)
+     -> goal is BAKED INTO the propagated field = POLICY-EVALUATION-like
+============================================================================================
+

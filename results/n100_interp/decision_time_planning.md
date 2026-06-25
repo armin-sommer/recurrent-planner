@@ -96,12 +96,32 @@ settle it:
 | **scalar value** (global critic) | n/a (global) | **YES — settles** corr→1.0 by tick 4, then drifts (`value_ticks`) |
 | **multi-step plan a₁..a₅** | — | **NO** — at chance, not stored/refined (`planq`) |
 
-**Conclusion:** the **action** is the quantity localized to the cell (a coherent per-node policy field,
-0.50 / 66% goalward); the per-cell **value** is only weakly/non-generalizably localized. **Neither per-cell
-field refines over ticks** — both are amortized (set by tick 1). What refines over thinking ticks is the
-**global readout**: the single executed action `a₀` sharpens 0.59→0.99 and the scalar value settles by the
-trained depth. So `plan_front`'s `‖Δh‖`-over-ticks at the agent = the **action readout sharpening**, not a
-propagating value or a refining per-cell field. (No stored multi-step plan.)
+**Conclusion (with a caveat the adversarial panel caught).** The **per-cell action field** is robustly
+localized (0.50 / 66% goalward) and **flat over ticks**; the **per-cell value field doesn't transfer across
+boards** — but that probe regresses the *agent→target navigation geodesic* (γ^BFS-dist), a **proxy** for the
+box-push task value, and its target is the same field the action probe takes the argmax of, so "value not
+localized" is a **probe/target artifact, not a property of the representation**. What is solid: **neither
+per-cell field refines over ticks** (both amortized), and what refines is the **global readout** — `a₀`
+sharpens 0.59→0.99 and the scalar value settles by trained depth. Crucially, the *global* value is **not**
+weak: re-run on n100 it is Bellman-consistent and greedy-read (next section). So `plan_front`'s
+`‖Δh‖`-over-ticks = the **readout integrating distal info**, riding on a genuine (amortized) value — not a
+value-free action statistic, and not a per-cell field marching.
+
+## Value channel re-run on n100 (closes the "vardepth-only" gap)
+
+The value pillars were previously only on the vardepth run; re-run on `cp_299996160` they **replicate**, so
+the value is real and central on this core too:
+
+| probe | result on n100 | reading |
+|---|---|---|
+| `bellman` | optimality residual/std = [0.15, 0.17, 0.19, 0.18] over successors 0–3 | converged value is a **Bellman fixed point** (multi-step consistent) |
+| `lookahead` | policy = argmaxₐ[r+γV(s′)] over own critic at **0.44** (chance 0.25), rises with thinking | action **is greedy over its own value** |
+| `e9` | out-of-view path-block wall: ΔV **−1.17σ** vs −0.34σ off-path (95% drop), **builds over ticks** (−0.19→−1.17) | value **causally adopts new physics**, integrated over ticks |
+| `e6b` | goal-move corr +0.39, box-move +0.43; \|dV\| box 1.43 > goal 0.86 | value **tracks task**, box-push-aware |
+| `e2` | reward-move propagates **2.4×** a transition-change | **policy-evaluation** (goal baked into the field), not successor-rep |
+
+So on n100 the value is amortized **and** Bellman-consistent, policy-evaluation-like, causally
+physics/task-sensitive, and greedy-read — the value half of the claim is now n100-established, not transferred.
 
 ## What measures what (latent vs action vs value)
 
@@ -114,16 +134,32 @@ propagating value or a refining per-cell field. (No stored multi-step plan.)
   `lookahead` (policy ≈ 1-step lookahead over its own V), `e2` (eval vs successor-rep). — these, **not**
   `plan_front`, are what license any statement about the value.
 
-## Bottom line for the writeup
+## Bottom line for the writeup — decision-time planning vs DP, resolved
 
-The dense n100 core realizes its graph structure as **global, graph-weighted, decision-relevant shaping of
-the latent (and the action) each tick**, not as an inward-marching decision-time search — so yes, it is
-doing planning, just globally rather than as a wavefront. "Planning content" (binding + a graph-respecting,
-wall-blocked, goal-anchored kernel + causal decision-relevant influence on the agent's latent and action) is
-present; the *spatial-temporal mechanism* is global refinement, exactly as predicted for a dense (non-local)
-relational core. The marching-wavefront picture belongs to the local/convolutional instance. **Value-channel
-claims** (amortized; causally tracks task/physics; Bellman/lookahead-consistent) come from the separate
-value-decoding suite above — `plan_front`/`plan_onset` measure the latent and the action, not the value.
+The honest resolution is **amortized value-based GPI with decision-time information integration** — three
+separable claims, each scoped:
+
+1. **No in-loop value-field DP** (n100-supported): the operator is stationary (no max), the loop copies its
+   value forward rather than iterating it (own-op coeff +0.02 vs +0.98 identity), and the per-cell value
+   field does not refine over ticks. There is no per-tick Bellman-backup of a value field in the loop.
+2. **There IS a genuine value function** (n100-supported, this session): Bellman-consistent (residual
+   0.15–0.19), policy-evaluation-like (goal baked in, e2 2.4×), causally physics/task-sensitive (e9/e6b),
+   and the policy is **greedy over it** (lookahead 0.44). It is **amortized** — compiled into the weights /
+   settled by trained depth — not absent.
+3. **The loop's per-tick job is decision-time information integration**: it folds distal, out-of-view,
+   graph-respecting, decision-relevant structure into a settling **global readout** (the value response to a
+   hidden wall builds over ticks, e9 −0.19→−1.17; the action readout sharpens, planq 0.59→0.99). This is
+   causal (e10: an out-of-view wall flips the action) — content a memoryless policy cannot produce.
+
+So the clean dichotomy "decision-time planning **instead of** value/DP" is **not** the right framing: it is
+value-based. Correct statement — **the evaluation is amortized into the weights (not re-iterated per tick),
+the loop integrates decision-relevant information into a settling readout at decision time, and the action is
+the greedy improvement over that amortized, Bellman-consistent value** (one step of GPI, with the loop on the
+integration/improvement side). "Not DP" holds only as "no in-loop value-field iteration"; "action not value"
+is **wrong** — the value is the substrate the decision rides on. Spatially it is global refinement, not a
+wavefront (the wavefront is the local/conv instance). [theory_empirical.tex describes the *vardepth* N=100
+run; its 0.44/0.41/Bellman numbers are that run's — the fixed-4 numbers here (0.50/0.44/0.15–0.19) corroborate
+the same picture on a second core.]
 
 ## Reproduce
 ```sh
@@ -131,4 +167,13 @@ CP=checkpoints/n100_fixed4/cp_299996160
 python -m experiments.interp.value_ticks --ckpt $CP --boards 256 --ticks 8      # value_ticks.log
 python -m experiments.interp.plan_onset  --ckpt $CP --boards 768 --dmax 9 --ticks 12 --rf_px 4   # plan_onset.log
 python -m experiments.interp.plan_front  --ckpt $CP --boards 768 --ticks 8 --rf 4 # plan_front.log
+# action localized? + value channel (the disambiguation + value re-run on n100):
+python -m experiments.interp.e11 --ckpt $CP --boards 192 --ticks 8     # e11.log  (per-cell action)
+python -m experiments.interp.e12 --ckpt $CP --boards 192 --ticks 8     # e12.log  (action frontier)
+python -m experiments.interp.planq --ckpt $CP --boards 512 --horizon 6 # planq.log (multi-step plan)
+python -m experiments.interp.bellman   --ckpt $CP --boards 256 --depth 4   # bellman.log
+python -m experiments.interp.lookahead --ckpt $CP --boards 256             # lookahead.log
+python -m experiments.interp.e9  --ckpt $CP --boards 200 --ticks 12        # e9.log
+python -m experiments.interp.e6b --ckpt $CP --boards 200 --ticks 12        # e6b.log
+python -m experiments.interp.e2  --ckpt $CP --boards 256                   # e2.log
 ```

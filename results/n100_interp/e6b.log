@@ -1,0 +1,19 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 16:08:30.558336: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== E6b: POINTED INTERVENTIONS, READOUT VALUE, EXTENDED THINKING (step=58593, boards=200, trained K=4, run K=12, std(V)=1.75) =====
+  clean: goal-move n=200, box-move n=200;  goal relocated to far side, box relocated to far side
+  -- corr(dV_t, -Delta dist) by thinking tick (theory: positive, strengthening) --
+     tick:                     1     2     3     4     5     6     7     8     9    10    11    12
+     MOVE GOAL (agent->goal): +0.39 +0.25 +0.21 +0.18 +0.19 +0.18 +0.21 +0.22 +0.23 +0.23 +0.22 +0.21
+     MOVE BOX  (box->target): +0.43 +0.21 +0.13 +0.13 +0.11 +0.08 +0.06 +0.05 +0.05 +0.05 +0.06 +0.05
+  -- final-tick |dV|/std --   move goal: 0.863    move box: 1.425
+  -- agreement: trained K=4 vs full K=12 --
+     goal: +0.18 -> +0.21    box: +0.13 -> +0.05
+  --> goal value tracks distance: YES (peak +0.39); box value box-push-aware: YES (peak +0.43)
+PLOT_E6B={'goal': [0.391, 0.252, 0.21, 0.182, 0.189, 0.182, 0.211, 0.222, 0.229, 0.232, 0.223, 0.208], 'box': [0.428, 0.209, 0.128, 0.13, 0.11, 0.079, 0.062, 0.053, 0.052, 0.053, 0.055, 0.054], 'mg': 0.863, 'mb': 1.425, 'Ktr': 4}
+============================================================================================
+

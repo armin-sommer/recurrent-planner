@@ -1,0 +1,18 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 16:04:35.683132: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== E9: DOES THE VALUE FIELD ADOPT NEW PHYSICS (a path-blocking wall)? (step=58593, boards=200, n=148, K=12) =====
+  geodesic lengthening: on-path mean Delta d = 4.23   off-path mean Delta d = 0.00
+  final-tick value change dV/std:  on-path -1.174   off-path -0.343   (theory: on-path more NEGATIVE)
+  corr(dV_on, -Delta d_on) = +0.156   (theory >0: longer detour -> lower value)
+  by thinking tick:
+    corr(dV_on,-dd) : [-0.08 +0.06 +0.09 +0.09 +0.09 +0.09 +0.11 +0.15 +0.15 +0.15 +0.15 +0.16]
+    mean dV_on/std  : [-0.19 -0.60 -0.83 -0.94 -0.97 -1.02 -1.09 -1.14 -1.16 -1.17 -1.17 -1.17]
+  on-path walls that lengthened the path (n=85): mean dV/std = -1.286, fraction with V dropped = 0.95
+  --> value does NOT clearly track the new path length
+PLOT_E9={'dV_on': -1.174, 'dV_off': -0.343, 'corr': 0.156, 'dd_on': 4.23, 'agt': [-0.083, 0.056, 0.087, 0.089, 0.086, 0.093, 0.111, 0.15, 0.151, 0.147, 0.146, 0.156]}
+============================================================================================
+

@@ -1,0 +1,17 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 15:56:35.292408: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== BELLMAN SELF-CONSISTENCY (step=58593, boards=256, gamma=0.97, K=4) =====
+  depth 0: |V - max_a(r+gV(s'))| = 0.268   (V_mean=0.88, maxQ_mean=1.04, signed=-0.158)
+  depth 1: |V - max_a(r+gV(s'))| = 0.296   (V_mean=0.76, maxQ_mean=0.97, signed=-0.216)
+  depth 2: |V - max_a(r+gV(s'))| = 0.342   (V_mean=0.67, maxQ_mean=0.92, signed=-0.248)
+  depth 3: |V - max_a(r+gV(s'))| = 0.312   (V_mean=0.69, maxQ_mean=0.93, signed=-0.233)
+  deterministic replay: True   value spread std(V)=1.78
+  optimality residual / std(V) by depth: [0.150 0.166 0.192 0.175]
+  on-policy TD residual by depth        : [0.400 0.378 0.401 0.463]
+  --> FIXED POINT at all depths (recursion holds: VI-like multi-step)
+====================================================================================
+
