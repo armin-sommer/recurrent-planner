@@ -124,6 +124,43 @@ the value is real and central on this core too:
 So on n100 the value is amortized **and** Bellman-consistent, policy-evaluation-like, causally
 physics/task-sensitive, and greedy-read — the value half of the claim is now n100-established, not transferred.
 
+## Is it search-style planning (forward rollout / tree search)? — No
+
+Tested after an adversarial panel flagged that "not DP" ≠ "search." Five independent lines converge on **no
+in-loop search**:
+- **No multi-step action plan** — `planq` (pooled readout: a₁..a₅ at chance, only a₀ decodable) + `e11`/`e12`
+  (per-cell action field decodes ~0.50 but is flat/eroding over ticks, no frontier).
+- **No in-loop max/branch** — the aggregation is an entmax **convex average** (this config; the AttentionCell
+  *defaults* to `maxplus`, a soft-Bellman-max, which this checkpoint overrides to `softmax` — so scope "max-free"
+  to *this config*). The only argmax is the actor head, post-loop.
+- **No in-loop value iteration** — `e1` (stationary operator cos→0.998, own-op +0.02, empty value wavefront).
+- **No forward-rollout frontier** (`search.py`, the decisive test): the model's *realized future trajectory*
+  IS decodable (on-path membership **0.68** bal, reach-time field R² **0.30–0.36**) — so the future is
+  represented — but it is **flat over ticks** (on-path [0.68,0.67,0.68,0.68]; reach-time [0.36,0.31,0.31,0.30])
+  with **no outward change-front** ("no outward trend"). The defining search signature — the rollout being
+  *progressively drawn/extended* over thinking ticks — is **absent**. Only the immediate action a₀ sharpens
+  (0.63→0.77).
+- **Future trajectory + value are amortized** — present from tick 0 (readable from the board encoding), not
+  constructed in the loop.
+
+So: **planning, but not search.** The future trajectory is amortized into the representation (the compiled
+policy's path is readable from the board encoding), not simulated by an in-loop forward rollout. _Residual
+(belt-and-suspenders, not run): a future-board-**state** decode targeting box-delta cells + counterfactual
+successors, rising-over-ticks — the agent-trajectory result already shows the "built-over-ticks" signature
+absent._
+
+## Methodological caveats (from adversarial verification — apply when citing)
+- `planq`'s printed auto-verdict says "REFINES (trajectory opt), 4/5 horizons decodable" — a **pooling
+  artifact**: the +0.05 "refinement" is a₀'s immediate-action sharpening; a₁..a₅ peak at tick 1 then erode.
+  Cite the per-horizon curves (+ `e11`/`e12`), not the auto-label.
+- `plan_front`'s off-path cosmetic control shows a **spurious +0.10 front-slope** (CI [+0.02,+0.14]) while the
+  on-path source is flat — so "no inward front" rests on the **2× on/off magnitude + flat on-path slope**, not
+  on a clean control; `arrival()` is also capped at K=4 over 9 distance bins (underpowered for a ~1-hop/tick front).
+- `e10`'s "0.18 vs 0.03" action-flip is **OOD K=12**; at the trained operating point **K=4 it is 0.083 vs 0.000**
+  (off-path exactly zero — still a clean non-local causal effect). Report K=4 as headline.
+- `e1`/`value_ticks`/`e11` per-cell **value** targets use the agent→target **navigation geodesic** (γ^dt), a
+  proxy for the box-push value — so "value not localized per-cell" is target-confounded, not a property of the rep.
+
 ## What measures what (latent vs action vs value)
 
 - **Latent** (`‖Δh‖` of the hidden, not decoded into anything): `plan_front`, `plan_onset`, `e10`, `wall`,

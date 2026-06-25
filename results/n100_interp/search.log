@@ -1,0 +1,21 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 20:14:19.707066: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== D=3 SEARCH/BINDING MECH-INTERP (step=58593, boards=256, K=4, D=3, rollout L=12) =====
+  rollout: mean realized path length = 10.1 squares | n_actions=4
+  -- Q1 BINDING: balanced acc decode h(s) -> is-OBJECT (0.5=chance) --
+     wall    (base rate 0.687): [0.82 0.81 0.81 0.81]  tick0->K 0.82->0.81
+     box     (base rate 0.040): [0.81 0.78 0.78 0.78]  tick0->K 0.81->0.78
+     target  (base rate 0.040): [0.78 0.78 0.77 0.76]  tick0->K 0.78->0.76
+     agent   (base rate 0.010): [0.78 0.75 0.73 0.74]  tick0->K 0.78->0.74
+  -- Q3 SEARCH: decision statistics on the model's OWN plan (per tick) --
+     next-action a0 @agent-cell (ch=0.25): [0.63 0.79 0.77 0.77]  tick0->K 0.63->0.77
+     plan move-dir field (ch=0.25):  [0.42 0.41 0.40 0.45]  tick0->K 0.42->0.45
+     on-path membership (bal,0.5):   [0.68 0.67 0.68 0.68]  tick0->K 0.68->0.68
+     reach-time field R^2:           [0.36 0.31 0.31 0.30]  tick0->K 0.36->0.30
+     change-front reach-time/tick:   [4.97 5.08 5.23]  -> no outward trend
+============================================================================================
+
