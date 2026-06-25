@@ -1,0 +1,21 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 07:10:15.005495: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== VALUE OVER TICKS (step=58593, B=256, K=8, K_train=4, ref tick=4) =====
+-- (A) model's own scalar value V_t = critic(top_h_t) --
+   mean V per tick          : [0.187 0.904 1.050 0.884 0.695 0.602 0.562 0.527]
+   |dV| tick-to-tick        : [nan 1.006 0.554 0.410 0.358 0.273 0.207 0.202]   (yardstick: std(V across boards) = 1.781)
+   |V_t - V_settled|/std(V) : [0.650 0.363 0.230 0.000 0.201 0.282 0.315 0.349]   (0 => same as trained-depth value)
+   corr(V_t, V_settled)     : [0.659 0.890 0.959 1.000 0.969 0.940 0.928 0.913]   (1 => board value-ranking fixed by tick t)
+-- (B) per-cell value FIELD, FIXED probe fit at trained depth --
+   ||field_t-field_ref||/||ref|| : [0.858 0.622 0.404 0.000 0.338 0.444 0.502 0.539]   (0 => field unchanged over ticks)
+   corr(field_t, field_ref)/board: [0.531 0.782 0.912 1.000 0.943 0.901 0.873 0.854]
+   fixed-probe field R^2         : [-2.291 -2.107 -2.062 -2.070 -2.080 -2.074 -2.086 -2.081]
+   (contrast) raw ||h_t-h_ref||/||ref||: [0.634 0.451 0.289 0.000 0.241 0.309 0.350 0.370]   (how much the hidden ITSELF moves)
+-- read: scalar value within trained depth settles by tick 4; field rel-change at tick1=0.86, tick2=0.62; raw hidden moves 0.63->.. --
+PLOT_VT={'Vmean': [0.187, 0.904, 1.05, 0.884, 0.695, 0.602, 0.562, 0.527], 'dV': [None, 1.006, 0.554, 0.41, 0.358, 0.273, 0.207, 0.202], 'stdV': 1.781, 'relV': [0.65, 0.363, 0.23, 0.0, 0.201, 0.282, 0.315, 0.349], 'corrV': [0.659, 0.89, 0.959, 1.0, 0.969, 0.94, 0.928, 0.913], 'field_rel': [0.858, 0.622, 0.404, 0.0, 0.338, 0.444, 0.502, 0.539], 'field_cos': [0.531, 0.782, 0.912, 1.0, 0.943, 0.901, 0.873, 0.854], 'field_r2': [-2.291, -2.107, -2.062, -2.07, -2.08, -2.074, -2.086, -2.081], 'raw': [0.634, 0.451, 0.289, 0.0, 0.241, 0.309, 0.35, 0.37], 'Ktr': 4}
+======================================================================
+
