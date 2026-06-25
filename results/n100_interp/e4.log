@@ -1,0 +1,24 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E4: WHERE VALUE IS PULLED FROM (step=58593, boards=128, tick=-1, top cell, head-avg) =====
+  graph-dist shell d:            0     1     2     3     4     5     6     7     8
+  mean attention mass at d:  0.018 0.217 0.213 0.054 0.042 0.023 0.017 0.012 0.011
+  euclid-dist shell mass:    [0.018 0.543 0.188 0.095 0.065 0.030 0.028 0.017 0.012]
+  geometric decay rho_graph (shells 1-6): 0.568   (mass ~ rho^d; reach 1/(1-rho) ~ 2.3 hops)
+  mass at d=0 (self):        0.018
+  mass at d=1 (immediate nb):0.217
+  mass BEYOND 1 hop (d>1):   0.395   <-- value is pulled from here, not just neighbours
+  mass to UNREACHABLE (wall-blocked) keys: 0.000   (through-wall leakage)
+  -- goal-ward asymmetry (BFS-to-target) --
+     mass TOWARD goal (lower dT): 0.251   AWAY (higher dT): 0.222   equal: 0.157   toward/away ratio 1.13
+  -- landmark mass --
+     on TARGET cell: 0.080   on AGENT cell: 0.022
+PLOT_GRAPH_PROFILE=[0.0182, 0.2168, 0.2131, 0.0537, 0.0416, 0.0231, 0.0166, 0.012, 0.0115]
+PLOT_EUCLID_PROFILE=[0.0182, 0.5429, 0.1879, 0.095, 0.0652, 0.0299, 0.0282, 0.0165, 0.0119]
+PLOT_GOALWARD=[0.2508, 0.1572, 0.2219]
+PLOT_SCALARS={'rho_g': 0.5685, 'self': 0.0182, 'd1': 0.2168, 'beyond1': 0.3947, 'unreach': 0.0, 'target': 0.0796, 'agent': 0.022}
+============================================================================================
+

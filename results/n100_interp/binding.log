@@ -1,0 +1,10 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+     wall (npos=17593): [0.81 0.82 0.81 0.81]  settled=0.806
+      box (npos=1024): [0.84 0.80 0.78 0.78]  settled=0.780
+   target (npos=1024): [0.80 0.76 0.79 0.80]  settled=0.795
+    agent (npos=256): [0.92 0.83 0.86 0.85]  settled=0.854
+===== BINDING per-object BALANCED accuracy (step=58593, boards=256, K=4, chance=0.50) =====
+SETTLED wall=0.806 box=0.780 target=0.795 agent=0.854

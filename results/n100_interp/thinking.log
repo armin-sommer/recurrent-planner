@@ -1,0 +1,49 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+loaded /workspace/cb-attn-n100/default/wandb/offline-run-20260624_162124-ljob1i9m/local-files/cp_299996160
+depth |  valid_medium  |  train_unfiltered   (solve rate; whole episode run at inner depth d)
+To evaluate the 0th batch, 4.52s
+To evaluate the 1th batch, 2.767s
+To evaluate the 0th batch, 4.379s
+To evaluate the 1th batch, 2.981s
+To evaluate the 0th batch, 4.369s
+To evaluate the 1th batch, 2.965s
+To evaluate the 0th batch, 4.376s
+To evaluate the 1th batch, 2.967s
+To evaluate the 0th batch, 4.36s
+To evaluate the 1th batch, 2.926s
+To evaluate the 0th batch, 4.487s
+To evaluate the 1th batch, 2.942s
+To evaluate the 0th batch, 4.363s
+To evaluate the 1th batch, 2.936s
+To evaluate the 0th batch, 4.368s
+To evaluate the 1th batch, 2.936s
+To evaluate the 0th batch, 3.159s
+To evaluate the 1th batch, 2.787s
+To evaluate the 0th batch, 3.323s
+To evaluate the 1th batch, 2.944s
+To evaluate the 0th batch, 3.3s
+To evaluate the 1th batch, 2.922s
+To evaluate the 0th batch, 3.39s
+To evaluate the 1th batch, 2.909s
+To evaluate the 0th batch, 3.289s
+To evaluate the 1th batch, 2.919s
+To evaluate the 0th batch, 3.275s
+To evaluate the 1th batch, 2.909s
+To evaluate the 0th batch, 3.331s
+To evaluate the 1th batch, 2.933s
+To evaluate the 0th batch, 3.317s
+To evaluate the 1th batch, 2.916s
+  d=0:    0.000          0.000
+  d=1:    0.199          0.810
+  d=2:    0.271          0.891
+  d=3:    0.288          0.911
+  d=4:    0.316          0.925
+  d=5:    0.316          0.925
+  d=6:    0.316          0.925
+  d=8:    0.316          0.925
+
+valid_medium thinking-lift: d=0=0.000 -> best=0.316  (+0.316)
+=> thinking HELPS

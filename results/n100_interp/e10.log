@@ -1,0 +1,18 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E10: DOES THE WALL'S VALUE-CHANGE REACH THE AGENT + RE-PLAN? (step=58593, boards=200, n=60, K=12) =====
+  wall placed on the agent->goal path, OUTSIDE the agent's conv view (propagated, not local).
+  agent-cell latent shift ||dh(agent)||/||h|| per tick:
+     on-path : [0.09 0.21 0.32 0.39 0.41 0.43 0.45 0.45 0.47 0.48 0.49 0.50]
+     off-path: [0.03 0.07 0.10 0.12 0.14 0.15 0.16 0.16 0.18 0.18 0.18 0.18]
+     final-tick on/off ratio = 2.68
+  greedy-action CHANGE rate (agent re-plans its move):
+     trained depth K=4: on-path 0.083   off-path 0.000
+     full depth  K=12: on-path 0.183   off-path 0.033
+  --> reaches the agent's square: YES;  re-plans the action: YES
+PLOT_E10={'dh_on': [0.0893, 0.2081, 0.322, 0.3872, 0.4094, 0.4264, 0.4469, 0.4502, 0.469, 0.4768, 0.489, 0.4966], 'dh_off': [0.03, 0.0663, 0.101, 0.1189, 0.1404, 0.1495, 0.1629, 0.1631, 0.1817, 0.1817, 0.1818, 0.185], 'act_on': 0.183, 'act_off': 0.033}
+============================================================================================
+

@@ -1,0 +1,33 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E13: DOES THE MODEL'S OWN DECISION CHANGE & IMPROVE OVER TICKS? (step=58593, boards=512, valid=512, K=8, K_train=4) =====
+  recovered action->dir map = [0, 1, 2, 3]; settled-tick optimality (goalward) = 0.590  (chance 0.25)
+  board counts by agent->goal distance: d1-3:130  d4-7:214  d8-12:135  d13-+:33
+  (1) DOES THINKING CHANGE THE DECISION?  action_t != settled-action, per tick:
+        [0.33 0.19 0.11 0.10 0.06 0.04 0.02 0.00]   tick1 vs settled = 0.332 of boards differ
+      action change tick1->settled, by distance band: d1-3=0.354  d4-7=0.336  d8-12=0.311  d13-+=0.303
+  (2) DOES THINKING IMPROVE THE DECISION?  optimality (action is goalward) per tick:
+        overall: [0.51 0.53 0.57 0.57 0.59 0.59 0.59 0.59]   tick1->K  0.510 -> 0.590  (delta +0.080)
+        by band, tick \ band     d1-3    d4-7   d8-12   d13-+
+               1             0.46    0.50    0.56    0.58
+               2             0.49    0.54    0.56    0.55
+               3             0.56    0.55    0.61    0.58
+               4             0.56    0.57    0.58    0.61
+               5             0.55    0.59    0.61    0.64
+               6             0.57    0.58    0.60    0.64
+               7             0.58    0.58    0.61    0.61
+               8             0.58    0.58    0.61    0.61
+      per-band optimality tick1->K:
+          d1-3: 0.46 -> 0.58  (delta +0.12)
+          d4-7: 0.50 -> 0.58  (delta +0.08)
+         d8-12: 0.56 -> 0.61  (delta +0.06)
+         d13-+: 0.58 -> 0.61  (delta +0.03)
+  (3) THE VALUE IT RIDES ON:  mean state-value per tick [0.20 0.94 1.13 0.95 0.77 0.66 0.61 0.57]
+        |dV| per tick (settling) [ .  1.02 0.58 0.41 0.36 0.27 0.21 0.21]   ;  decision margin (top1-top2 logit) [1.06 2.72 3.23 3.42 3.48 3.49 3.55 3.59]
+  --> thinking CHANGES the decision: YES;  IMPROVES it (more goalward / more on far boards): YES
+PLOT_E13={'chg_all': [0.332, 0.193, 0.109, 0.096, 0.064, 0.045, 0.018, 0.0], 'opt_all': [0.51, 0.533, 0.572, 0.572, 0.59, 0.588, 0.59, 0.59], 'opt_band': [[0.462, 0.5, 0.556, 0.576], [0.492, 0.542, 0.556, 0.545], [0.562, 0.551, 0.615, 0.576], [0.562, 0.57, 0.578, 0.606], [0.554, 0.593, 0.607, 0.636], [0.569, 0.584, 0.6, 0.636], [0.585, 0.579, 0.607, 0.606], [0.577, 0.579, 0.615, 0.606]], 'chg1K_band': [0.354, 0.336, 0.311, 0.303], 'bands': ['d1-3', 'd4-7', 'd8-12', 'd13-+'], 'Vmean': [0.201, 0.939, 1.127, 0.946, 0.766, 0.664, 0.606, 0.566], 'dV': [None, 1.0153, 0.5799, 0.4064, 0.3564, 0.2745, 0.2115, 0.2067], 'margin': [1.058, 2.722, 3.226, 3.423, 3.482, 3.492, 3.551, 3.586], 'amap': [0, 1, 2, 3], 'opt_settled': 0.59}
+====================================================================================================
+

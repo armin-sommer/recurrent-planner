@@ -1,0 +1,40 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+
+===== E5: REACH vs TICKS (step=58593, boards=256, K=12, D=3) =====
+  perturb a floor cell at graph-dist d from agent; agent-cell ||dh|| per tick.
+    d    n  arr   final   normalized onset (||dh||_t / ||dh||_final)
+    1   18    1   1.168   [0.523 0.671 0.805 0.886 0.922 0.976 1.005 0.997 1.017 1.013 1.003 1.000]
+    2   40    2   1.176   [0.353 0.703 0.875 0.928 0.951 0.959 0.968 0.975 0.992 0.988 0.995 1.000]
+    3   29    2   0.864   [0.311 0.516 0.663 0.792 0.845 0.915 0.967 0.996 1.020 1.015 1.010 1.000]
+    4   27    2   0.698   [0.263 0.528 0.722 0.890 0.846 0.887 0.909 0.912 0.935 0.961 0.997 1.000]
+    5   30    3   0.648   [0.161 0.448 0.676 0.752 0.802 0.874 0.913 0.944 0.987 0.998 1.001 1.000]
+    6   33    3   0.472   [0.107 0.392 0.589 0.752 0.824 0.827 0.897 0.937 0.966 0.966 0.993 1.000]
+    7   33    4   0.462   [0.079 0.262 0.464 0.595 0.746 0.791 0.849 0.880 0.909 0.970 0.985 1.000]
+    8   23    3   0.382   [0.117 0.333 0.580 0.649 0.706 0.841 0.886 0.893 0.982 1.029 1.008 1.000]
+    9   23    4   0.270   [0.104 0.239 0.367 0.542 0.585 0.667 0.731 0.915 0.945 0.968 0.954 1.000]
+
+  horizon(tick) = max d with signal >=50% arrived:
+     tick:      1   2   3   4   5   6   7   8   9  10  11  12
+     horizon:   1   4   8   9   9   9   9   9   9   9   9   9
+
+  absolute ||dh(agent)|| by (d x tick):
+      d/t     1     2     3     4     5     6     7     8     9    10    11    12
+        1  0.61  0.78  0.94  1.03  1.08  1.14  1.17  1.16  1.19  1.18  1.17  1.17
+        2  0.41  0.83  1.03  1.09  1.12  1.13  1.14  1.15  1.17  1.16  1.17  1.18
+        3  0.27  0.45  0.57  0.68  0.73  0.79  0.83  0.86  0.88  0.88  0.87  0.86
+        4  0.18  0.37  0.50  0.62  0.59  0.62  0.63  0.64  0.65  0.67  0.70  0.70
+        5  0.10  0.29  0.44  0.49  0.52  0.57  0.59  0.61  0.64  0.65  0.65  0.65
+        6  0.05  0.18  0.28  0.35  0.39  0.39  0.42  0.44  0.46  0.46  0.47  0.47
+        7  0.04  0.12  0.21  0.27  0.34  0.37  0.39  0.41  0.42  0.45  0.45  0.46
+        8  0.04  0.13  0.22  0.25  0.27  0.32  0.34  0.34  0.37  0.39  0.38  0.38
+        9  0.03  0.06  0.10  0.15  0.16  0.18  0.20  0.25  0.26  0.26  0.26  0.27
+
+  arrival-tick vs d slope = +0.30  (~3.4 hops/tick); horizon 1->9 over ticks
+  --> REACH COMPOUNDS over ticks -> pulled-from cells are updated (iterative deepening / multi-step PE)
+PLOT_ARRIVAL={1: 1, 2: 2, 3: 2, 4: 2, 5: 3, 6: 3, 7: 4, 8: 3, 9: 4}
+PLOT_HORIZON=[1, 4, 8, 9, 9, 9, 9, 9, 9, 9, 9, 9]
+============================================================================================
+

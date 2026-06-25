@@ -66,6 +66,8 @@ coverage.xml
 
 # Django stuff:
 *.log
+# but keep interp experiment evidence logs (committed alongside their writeups)
+!results/n100_interp/*.log
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
