@@ -1,0 +1,23 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 08:04:31.995907: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== E11: DECODABLE PLAN AS A POLICY FIELD (step=58593, boards=192, test=39, K=8) =====
+  (1) decode per-node greedy action h(s)->dir (chance 0.25), by tick: [0.53 0.53 0.49 0.47 0.49 0.50 0.49 0.50]
+      settled dir-decode accuracy = 0.499
+  (2) plan coherence (held-out boards):
+      fraction of nodes whose decoded action points GOALWARD (lower BFS-dist) = 0.656 (chance ~0.33)
+      follow the decoded field from the agent -> reaches the goal on 0.359 of boards
+  (3) action = value gradient:
+      decoded action == value-gradient direction (max-value neighbour) on 0.355
+      value-gradient direction == true greedy direction on 0.507
+PLOT_E11={'diracc': [0.533, 0.534, 0.49, 0.475, 0.489, 0.503, 0.489, 0.499], 'goalward': 0.656, 'reach': 0.359, 'vg_dir': 0.355, 'vg_true': 0.507}
+EX_b=125 agent=81 goal=54 H=10 W=10
+EX_tiles=[0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 2, 1, 0, 0, 0, 0, 0, 0, 0, 1, 3, 2, 1, 1, 2, 1, 0, 0, 4, 2, 1, 1, 3, 1, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+EX_pdir=[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2, -1, -1, -1, -1, -1, -1, -1, 3, 3, 2, -1, -1, -1, -1, -1, -1, -1, 0, 0, 2, 3, 3, 2, 2, -1, -1, 0, 0, 0, 0, 2, 2, 1, 1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+EX_truedir=[-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 3, 3, 0, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 2, 2, 2, 2, -1, -1, 3, 0, 0, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1]
+EX_val=[None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, None, 0.855, None, None, None, None, None, None, None, 0.865, 0.851, 0.877, None, None, None, None, None, None, None, 0.847, 0.883, 0.894, 0.917, 0.88, 0.863, 0.843, None, None, 0.854, 0.859, 0.868, 0.928, 0.914, 0.897, 0.878, 0.858, None, None, None, None, None, None, None, None, None, None, None]
+============================================================================================
+

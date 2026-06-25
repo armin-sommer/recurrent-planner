@@ -82,6 +82,27 @@ refines as info arrives" — the field probe doesn't generalize, value is amorti
 un-converged loop). One code note: the eu≥4px gate is looser than the 7px Chebyshev conv RF; `plan_front`
 fixes this with a Chebyshev gate.
 
+## Which is localized & which refines — ACTION vs VALUE (the disambiguation)
+
+`plan_front`/`plan_onset` only show the *latent* `‖Δh‖` moves; they don't say whether the cell carries the
+**action** or the **value**, nor which one refines over ticks. The per-cell decode probes (run on n100)
+settle it:
+
+| quantity | localized per-cell? | changes over ticks? |
+|---|---|---|
+| **action** (per-node greedy dir) | **YES — decode 0.50** (chance 0.25), 66% goalward (`e11`) | **NO** — flat 0.53→0.50; every distance band onsets at tick 1, no frontier (`e12`) |
+| **value** (per-node) | **weakly** — `e1` R²≈0.22; `value_ticks` held-out field R²≈**−2.07** (doesn't generalize) | **NO** (per-cell) — flat (`e1`) |
+| **executed action a₀** (global readout) | n/a (global) | **YES — sharpens 0.59→0.99** over ticks 1→4 (`planq`) |
+| **scalar value** (global critic) | n/a (global) | **YES — settles** corr→1.0 by tick 4, then drifts (`value_ticks`) |
+| **multi-step plan a₁..a₅** | — | **NO** — at chance, not stored/refined (`planq`) |
+
+**Conclusion:** the **action** is the quantity localized to the cell (a coherent per-node policy field,
+0.50 / 66% goalward); the per-cell **value** is only weakly/non-generalizably localized. **Neither per-cell
+field refines over ticks** — both are amortized (set by tick 1). What refines over thinking ticks is the
+**global readout**: the single executed action `a₀` sharpens 0.59→0.99 and the scalar value settles by the
+trained depth. So `plan_front`'s `‖Δh‖`-over-ticks at the agent = the **action readout sharpening**, not a
+propagating value or a refining per-cell field. (No stored multi-step plan.)
+
 ## What measures what (latent vs action vs value)
 
 - **Latent** (`‖Δh‖` of the hidden, not decoded into anything): `plan_front`, `plan_onset`, `e10`, `wall`,

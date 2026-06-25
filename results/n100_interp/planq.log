@@ -1,0 +1,20 @@
+Gym has been unmaintained since 2022 and does not support NumPy 2.0 amongst other critical functionality.
+Please upgrade to Gymnasium, the maintained drop-in replacement of Gym, or contact the authors of your software and request that they upgrade.
+Users of this version of Gym should be able to simply replace 'import gym' with 'import gymnasium as gym' in the vast majority of cases.
+See the migration guide at https://gymnasium.farama.org/introduction/migration_guide/ for additional information.
+2026-06-25 08:08:03.176544: W external/xla/xla/service/gpu/nvptx_compiler.cc:930] The NVIDIA driver's CUDA version is 12.8 which is older than the PTX compiler version 12.9.86. Because the driver is older than the PTX compiler version, XLA is disabling parallel compilation, which may slow down compilation. You should update your NVIDIA driver or use the NVIDIA-provided CUDA forward compatibility packages.
+
+===== PLAN-QUALITY vs TICK (step=58593, boards=512, K=4, horizon=6, n_act=4) =====
+  decode executed action a_t from policy readout, per thinking tick:
+   a_0 (chance 0.29, n=512): [0.59 0.77 0.93 0.99]  peak@tick4
+   a_1 (chance 0.29, n=512): [0.40 0.31 0.38 0.35]  peak@tick1
+   a_2 (chance 0.28, n=512): [0.32 0.35 0.31 0.26]  peak@tick2
+   a_3 (chance 0.34, n=512): [0.29 0.29 0.30 0.37]  peak@tick4
+   a_4 (chance 0.31, n=512): [0.37 0.25 0.36 0.31]  peak@tick1
+   a_5 (chance 0.27, n=512): [0.33 0.28 0.32 0.33]  peak@tick1
+  PLAN-QUALITY (mean acc over horizons) per tick: [0.38 0.38 0.43 0.44]   tick1->K 0.38->0.44
+  mean lift-over-chance: tick1=0.09  peak=0.53  tickK=0.14
+  multi-step plan: 4/5 future horizons (t>=1) decodable >chance+0.05
+  refinement tick1->~tick4: +0.05  (REFINES (trajectory opt))
+====================================================================================
+
