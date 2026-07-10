@@ -84,28 +84,30 @@ def main(cp_dir, n_boards):
     f_ka = np.broadcast_to(mu, (B, S, C)).copy()                              # keep-agent-only
     f_kr = np.broadcast_to(mu, (B, S, C)).copy()                              # keep-random-only
     f_aa = field.copy()                                                       # ablate-agent
+    f_ar = field.copy()                                                       # ablate-random (necessity control)
     for b in okB:
         f_ka[b, agent[b]] = field[b, agent[b]]
         f_kr[b, randcell[b]] = field[b, randcell[b]]
         f_aa[b, agent[b]] = mu[agent[b]]
+        f_ar[b, randcell[b]] = mu[randcell[b]]
     ag_keepagent = agree(f_ka); ag_keeprand = agree(f_kr)
-    ag_ablagent = agree(f_aa); ag_allmean = agree(np.broadcast_to(mu, (B, S, C)))
+    ag_ablagent = agree(f_aa); ag_ablrand = agree(f_ar); ag_allmean = agree(np.broadcast_to(mu, (B, S, C)))
 
     print(f"\n===== LOCALIZED-READOUT TEST (dense attn, step={step}, boards={len(okB)}, K={K}, nact={nact}, chance={1/nact:.2f}) =====")
     print(f"  -- DECODE model action a0 from (same C={C} dims for agent vs random) --")
     print(f"     agent-cell : {dec_agent:.3f}    random-cell : {dec_rand:.3f}    full-field({S*C}d): {dec_full:.3f}   (chance {1/nact:.2f})")
     print(f"  -- CAUSAL mean-ablation: P(action unchanged vs full field) --")
     print(f"     keep-AGENT-only  : {ag_keepagent:.3f}   (sufficiency; vs keep-random {ag_keeprand:.3f}, all-mean {ag_allmean:.3f})")
-    print(f"     ablate-AGENT     : {ag_ablagent:.3f}   (necessity; low => agent cell needed)")
+    print(f"     ablate-AGENT     : {ag_ablagent:.3f}   vs ablate-RANDOM {ag_ablrand:.3f}   (necessity control; agent<<random => agent needed)")
     suff = ag_keepagent > 0.6 and ag_keepagent > ag_keeprand + 0.15
-    nec = ag_ablagent < ag_keepagent - 0.15
+    nec = ag_ablagent < ag_ablrand - 0.15
     verd = ("LOCALIZED: agent cell is sufficient (keep-agent >> keep-random) and necessary (ablate-agent drops)"
             if (suff and nec) else
             "PARTIAL: agent cell carries the action but the readout also uses other cells -- inspect")
     print(f"  --> {verd}")
     print("PLOT_LOCALREAD=" + repr(dict(dec_agent=round(dec_agent, 3), dec_rand=round(dec_rand, 3), dec_full=round(dec_full, 3),
           keep_agent=round(ag_keepagent, 3), keep_rand=round(ag_keeprand, 3), ablate_agent=round(ag_ablagent, 3),
-          all_mean=round(ag_allmean, 3), chance=round(1 / nact, 3))))
+          ablate_rand=round(ag_ablrand, 3), all_mean=round(ag_allmean, 3), chance=round(1 / nact, 3))))
     print("=" * 92 + "\n")
 
 
